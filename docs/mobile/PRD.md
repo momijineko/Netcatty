@@ -32,9 +32,10 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 
 - 云同步、AI 助手、系统管理器、插件系统、脚本自动化、MCP、telnet/serial/mosh/et、x11 转发。
 - 多窗口、全局快捷键:移动端无对应系统机制,以多会话标签页(3.3)、App Shortcuts、`ssh://` 深链替代;托盘本体不移植,其保活价值由后台保活(4.3)承担。
-- 桌面 UI 定制(自定义 CSS、应用图标变体、全局键位方案):移动端不做。
+- 桌面 UI 定制(自定义 CSS、应用图标变体、全局键位方案、工具栏布局自定义):移动端不做。
 - SFTP 双窗格(桌面分屏对比):移动端不做,以单窗格 + 书签替代。
 - 终端分屏/分割视图(桌面 workspace split view,水平/垂直分割):移动端不做,以多标签 + 会话切换替代。
+- 工作区管理(创建/重命名/切换/拖拽归组,桌面 workspace 概念):移动端不做,以多标签 + 最近会话替代。
 - 本地终端(连接本机 shell):移动端无意义,不做。
 - 本地文件浏览面板(桌面 SFTP 左窗格):移动端以**系统文件选择器**替代,不做完整本地文件管理。
 - 资源管理器右键菜单集成(Windows 专属):移动端无对应机制。
@@ -71,6 +72,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | **快速连接** | P1 | 临时输入 host/port/用户名/认证直接连接,**不保存主机**(支持粘贴 `ssh://` 参数与 TOFU 流程;对齐桌面 quickConnect) |
 | 主机分组:创建/重命名/删除/归类 | P0 | 分组树可折叠;主机可归属多级分组 |
 | 主机搜索 | P0 | 按主机名/IP 过滤,列表即时刷新 |
+| 批量连接 | P2 | 多选主机同时连接(错峰调度,对齐 connectHostsStaggered;批量运维场景) |
 | **快速切换器** | P2 | 全局搜索/命令面板:快速跳转主机、操作、设置(对齐桌面 QuickSwitcher) |
 | 最近连接 | P0 | 记录最近 N 条连接,一键重连 |
 | **连接历史** | P2 | 完整连接记录:查看/搜索/删除/重连(对齐 ConnectionLogsManager;区别于会话输出日志) |
@@ -137,6 +139,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | 会话广播 | P2 | 同时向多个会话发送同一输入(对齐桌面 isBroadcastEnabled;批量运维场景) |
 | **清空输出缓冲** | P1 | 一键清空终端输出(对齐 clearBuffer/clearViewport) |
 | **命令历史** | P1 | **远端命令历史**(读取远程 shell history,按主机/全局作用域),可搜索、一键运行/粘贴、**存为片段**、删除(对齐桌面 history 面板) |
+| 密码提示辅助 | P2 | 终端检测 sudo 密码提示时快速填充/凭据选择(对齐 passwordPromptAssist,与 SFTP SUDO 协同) |
 | **会话日志** | P2 | 会话输出自动记录/手动开始停止;导出 txt/raw/html(对齐 sessionLogs bridge;断开后仍可翻日志) |
 | 终端设置 | P1 | 字号、主题(明/暗/跟随系统)、字体、**光标样式**(对齐 settings.terminal.font/cursor) |
 | 搜索回滚缓冲 | P1 | 在输出历史中搜索 |
@@ -169,7 +172,9 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | **传输冲突处理** | P1 | 同名文件冲突时选择 覆盖/重命名/跳过(对齐桌面 resolveConflict) |
 | **传输重试** | P1 | 失败传输可一键重试(不重新选择文件) |
 | 分享到系统 | P2 | 下载后的文件可通过系统分享(Android share sheet / iOS share;**移动端特有**) |
+| 文件打开方式关联 | P2 | 按扩展名关联 内置编辑器/系统应用 与默认打开器(对齐 SettingsFileAssociationsTab) |
 | **SFTP 跟随终端会话** | P1 | 从终端会话直接打开 SFTP 并定位当前工作目录(对齐 sftpFollowTerminalCwd/autoOpenSftpPanel) |
+| SFTP→终端反向定位 | P2 | 在 SFTP 中「于终端打开当前路径」(反向跟随,对齐 SftpPaneToolbar open-in-terminal) |
 | SFTP 书签 | P2 | 常用目录书签快捷访问(含**跨主机全局书签**,对齐 sftpBookmarks/globalBookmark) |
 | SFTP 自动同步 | P2 | 本地目录变化自动上传(对齐桌面 autoSync/FileWatcher;移动端本地文件场景弱,记录) |
 | SFTP SUDO 模式 | P2 | 上传/写操作以 sudo 执行(对齐 sftpSudo;写 root 目录场景) |
@@ -217,6 +222,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | 自定义主题 | P2 | 自定义终端/UI 配色与强调色(对齐 CustomThemeEditor/accentMode);**支持导入 iTerm2 主题**(对齐 itermcolorsParser) |
 | 安全设置 | P1 | 是否启用 App 锁(生物识别/PIN);锁定时断开活动会话(可配);**移动端特有(桌面应用无锁屏概念)** |
 | 关于/版本 | P0 | 版本号、开源声明、隐私政策入口;**反馈入口(报告问题/社区/GitHub/新特性)** |
+| 设置搜索 | P2 | 设置页内搜索定位设置项(对齐 SettingsSearchControl/settingsSearchCatalog) |
 | 清空 vault 数据 | P2 | 重置全部 vault 数据(二次确认;对齐 SettingsPage clearVaultData) |
 | 诊断日志导出 | P2 | 导出诊断信息帮助排障(对齐 sshDebugLog/crashLogs/diagnostics) |
 | 临时目录管理 | P2 | 设置中查看/清理 App 临时文件(对齐 settings.system.tempDirectory) |
@@ -229,7 +235,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 
 | 需求 | 验收标准 |
 |---|---|
-| 凭据存储 | 密码/私钥/passphrase **只落**系统安全存储(Android Keystore 加密 / iOS Keychain),不落明文文件 |
+| 凭据存储 | 密码/私钥/passphrase **只落**系统安全存储(Android Keystore 加密 / iOS Keychain),不落明文文件;设置中显示**凭据服务可用性状态**(对齐 SettingsSystemTab credentials) |
 | host key 校验 | 强制 TOFU;指纹变更默认阻断,用户显式确认才继续 |
 | 屏幕锁定 | 开启 App 锁后,锁定时会话不可见、可配置自动断开 |
 | 日志脱敏 | 错误日志不记录密码、私钥内容 |
