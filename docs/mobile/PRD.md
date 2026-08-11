@@ -124,6 +124,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | 需求 | 优先级 | 验收标准 |
 |---|---|---|
 | 交互终端 | P0 | 原生渲染;VT100/xterm 兼容;彩色/UTF-8 正常 |
+| Kitty 键盘协议 | P2 | 增强键盘协议支持(对齐 kittyKeyboardRuntime;依赖原生终端能力,记录) |
 | **字符编码切换** | P1 | 终端运行时切换编码(UTF-8/GB18030 等,对齐桌面 terminalEncoding);中文 GBK 日志场景 |
 | 链接可点 | P1 | 终端输出中的 URL 可点按打开(系统浏览器) |
 | emoji/宽字符渲染 | P1 | emoji/中文宽字符显示宽度正确(对齐桌面 unicode-graphemes) |
@@ -185,6 +186,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | 自动启动 | P1 | 主机连接时按配置自动启动转发(autoStart) |
 | 转发流量统计 | P2 | 转发流量/速率可视化(对齐 TrafficDiagram) |
 | 多规则 | P1 | 支持多转发规则(桌面无硬性条数限制;移动端建议上限 8 条) |
+| 目标 host key 验证 | P2 | 转发到新目标时执行 TOFU 指纹验证(对齐 PortForwardHostKeyDialog;安全必做) |
 
 ### 3.6 密钥管理(P0 基础 / P1 完整)
 
