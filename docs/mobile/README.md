@@ -31,7 +31,7 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 
 - 纯 React hooks 状态管理(无 zustand),组件大量使用 radix-ui + tailwindcss 4。
 - 终端用 `@xterm/xterm` 6.1.0-beta + addons(webgl/fit/search/image 等)。
-- 桥访问统一走 `window.netcatty`(preload 暴露 200+ 扁平方法)。
+- 桥访问统一走 `window.netcatty`(preload 暴露 500+ 扁平方法,含插件域;核心域约 200)。
 - 持久化:localStorage(经 safeStorage 加密敏感字段)+ 主进程文件/sqlite。
 
 ## 3. 核心约束(决定架构的事实)
