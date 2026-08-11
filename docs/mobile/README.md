@@ -47,12 +47,12 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 
 ### 方案 A:React Native 重写(网络层原生,UI 层重写)
 
-- **结构**:RN 应用 + 自研 TurboModule 桥接层(iOS 包 NMSSH / Android 包 mwiede-jsch)+ 终端用 WebView 包 xterm.js(起步)或 SwiftTerm(进阶)。
+- **结构**:RN 应用 + 自研 TurboModule 桥接层(iOS 包 NMSSH / Android 包 mwiede-jsch)+ 终端用**原生组件**(iOS SwiftTerm / Android Termux terminal-emulator)。
 - **复用**:domain 纯逻辑、hooks 编排、AI API 层、云同步客户端;UI 组件需按 RN 重写(radix/tailwind 不可用)。
 - **优点**:长期质量与商店体验最优,生态主流,业界路线验证(Termius/Blink 模式)。
 - **缺点**:UI 全部重写,工作量最大;原生桥接层(SSH/SFTP/转发/终端)需自研且双端各一份。
 
-### 方案 B:Capacitor 打包现有 React UI + 自研原生 SSH 插件(推荐 Phase 1)
+### 方案 B:Capacitor 打包现有 React UI + 自研原生 SSH 插件(PoC 验证工具)
 
 - **结构**:现有 React 渲染层几乎原样进 Capacitor WebView;SSH/SFTP/终端走 JS → Capacitor 插件 → 原生(NMSSH/JSch);终端仍在 WebView 内跑 xterm.js(与桌面完全一致)。
 - **复用**:UI 复用最大化(桌面 web 与移动 web 共享一套组件);domain/hooks/云同步/AI 全部复用。
@@ -65,14 +65,27 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 - SSH 经自建网关中转。**不满足"本地直连"预期**,且引入服务器依赖与安全面。
 - **定位**:仅作长期可选/受限网络场景补充,不作为主线。
 
+### 体验对比:Capacitor(WebView)vs RN(原生)
+
+| 维度 | Capacitor(WebView + xterm.js) | RN + 原生终端(SwiftTerm / Termux emulator) |
+|---|---|---|
+| 大输出滚动性能 | DOM 渲染,输出刷屏明显卡顿 | Metal / 原生渲染,碾压级差距 |
+| 软键盘 / IME | WebView 焦点管理是移动端老大难(桌面 xterm 按物理键盘设计) | 原生组件精确控制软键盘、补全、IME 组合 |
+| 触摸交互 | 无 Ctrl/Alt/滚轮/右键,只能屏幕按钮模拟 | 原生触控条、手势、专业键盘行(Blink 为标杆) |
+| 高级终端协议 | xterm addon-webgl 在 WebView 受限 | SwiftTerm 原生支持 Sixel / iTerm2 / Kitty 图像协议 |
+| UI 层交互 | 桌面"鼠标/键盘/悬停"思维,响应式适配手感打折 | 从交互模型即移动原生:手势、导航、触觉反馈 |
+| 桌面行为一致性 | 与桌面完全一致(也是优点) | 需重新定义移动端交互规范 |
+
+**结论**:两者在"WebView 包 xterm"时终端体验同级;真正的分水岭是能否换掉 WebView 终端。体验优先 → 原生终端路线。
+
 ## 5. 推荐路线
 
-**推荐 B 起步、A 为长期演进目标,即"Capacitor 验证 + 原生 SSH 桥 + WebView 终端"双轨**:
+**体验是首要目标 → 主推方案 A(RN 重写 + 原生终端)**,Capacitor 仅作 PoC 验证工具,不作为产品形态:
 
-1. **Phase 1 用方案 B**:把现有 UI 搬进 Capacitor,自研原生 SSH 桥(认证 + 交互终端 + SFTP 只读浏览),最快验证"移动版全功能对齐"的交互可行性。此阶段**两个方案的原生 SSH 工作量是共享的**(都要包 NMSSH/JSch),区别只在 UI 层。
-2. **Phase 2 按体验决策**:若 WebView 终端性能/键盘体验不达标,将终端渲染切换为原生(SwiftTerm / Termux emulator),SSH 桥保持;若 UI 需要深度移动化(手势、性能),再评估整体迁移到 RN(方案 A)。
+1. **首版直接走 RN(方案 A)**:UI 按移动原生交互模型重写;SSH 桥(iOS NMSSH / Android mwiede-jsch)为共同必建底座;终端层**首版即上原生组件**(iOS SwiftTerm / Android Termux terminal-emulator),不接受 WebView xterm 作为长期形态。
+2. **Capacitor 仅用于 PoC**:正式投入 RN 重写前,用 Capacitor + 现有 UI 快速验证交互与信息架构(≤2 周),产出移动端界面设计依据;验证完即弃,代码不进入产品线。
 
-**理由**:原生 SSH 桥是两条路线共同的必建底座,先建它;UI 层复用优先,用真实移动端体验数据决定是否重写,避免一开始就押注全量重写。
+**理由**:SSH 终端是重度键盘 + 高频刷屏场景,恰是 WebView 最弱的两个点;业界标杆(Blink Shell / JuiceSSH / Termius 移动端)均验证"原生终端 + 原生 SSH"路线。体验优先前提下,WebView 方案的开发速度优势不构成取舍理由。
 
 ## 6. 桌面能力 → 移动端映射表
 
@@ -104,8 +117,8 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 
 | 阶段 | 内容 | 出口标准 | 相对规模 |
 |---|---|---|---|
-| Phase 0 | PoC:Capacitor/RN 骨架 + NMSSH/JSch 桥(spike)+ WebView xterm 连接一台真实主机 | 真机连上并跑通交互终端 | S |
-| Phase 1 | 认证体系(密码/密钥/host key)+ vault 迁移 + 终端完善 | 可日常使用的基本 SSH 客户端 | M |
+| Phase 0 | PoC:Capacitor 现有 UI 验证交互/信息架构 + RN 骨架 spike(SSH 桥 + 原生终端渲染可行性) | 产出移动端界面设计依据;RN 技术风险验证完 | S |
+| Phase 1 | RN 骨架 + 认证体系(密码/密钥/host key)+ vault 迁移 + 原生终端(SwiftTerm / Termux emulator) | 真机可日常使用的基本 SSH 客户端 | M |
 | Phase 2 | SFTP 浏览 + 上传下载/传输管理 | 文件操作可用 | M |
 | Phase 3 | 端口转发 + 密钥管理器 + known_hosts | 对齐桌面核心 | M |
 | Phase 4 | 云同步 + AI(API 直连)+ snippets + 系统管理器 | 覆盖桌面大部分高频能力 | M-L |
@@ -113,7 +126,7 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 
 ## 8. 主要风险
 
-1. **终端体验**:WebView xterm 在移动端的滚动、软键盘、IME、性能是行业老大难;若不可接受,需原生终端组件,双端各写一份。
+1. **终端维护成本**:原生终端组件双端各一份(iOS SwiftTerm / Android Termux terminal-emulator),需跟进上游与许可;WebView 方案已因体验原因排除。
 2. **原生 SSH 桥自研成本**:SSH/SFTP/转发/认证都要自研,且 iOS/Android 双实现,维护持续投入。
 3. **host key 验证缺失风险**:选用现成 RN 库必须自补验证,否则 MITM。
 4. **降级项决策**:插件/MCP/脚本/AI Agent CLI 在移动端不可用,"全功能对齐"的边界需要产品侧明确。
@@ -121,7 +134,7 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 
 ## 9. 未决问题(需评审确认)
 
-1. **首版路线**:确认 Phase 1 走 Capacitor(方案 B)还是直接 RN(方案 A)?影响后续所有投入。
+1. ~~首版路线~~ **已决策(2026-08)**:体验优先 → 主推 RN 重写 + 原生终端(见第 5 节),Capacitor 仅作 PoC。
 2. **"全功能对齐"边界**:插件系统、脚本自动化、AI Agent CLI、serial/x11 转发在移动端不可用,是接受降级还是无限期推迟这些能力?
-3. **终端渲染**:接受 WebView xterm 起步,还是首版就投入原生终端(SwiftTerm)?
+3. **终端渲染**:倾向首版即原生;SwiftTerm 仅覆盖 iOS,Android 侧需评估 Termux terminal-emulator 的成熟度与许可。
 4. **团队与时间**:当前无移动端原生(iOS/Android)人力,原生桥自研部分是否外协或自建?
