@@ -82,16 +82,20 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 
 **体验是首要目标 → 主推方案 A(RN 重写 + 原生终端)**,Capacitor 仅作 PoC 验证工具,不作为产品形态:
 
-1. **首版直接走 RN(方案 A)**:UI 按移动原生交互模型重写;SSH 桥(iOS NMSSH / Android mwiede-jsch)为共同必建底座;终端层**首版即上原生组件**(iOS SwiftTerm / Android Termux terminal-emulator),不接受 WebView xterm 作为长期形态。
-2. **Capacitor 仅用于 PoC**:正式投入 RN 重写前,用 Capacitor + 现有 UI 快速验证交互与信息架构(≤2 周),产出移动端界面设计依据;验证完即弃,代码不进入产品线。
+1. **首版直接走 RN(方案 A),工程形态 Expo**:UI 按移动原生交互模型重写;SSH 桥(iOS NMSSH / Android mwiede-jsch)为共同必建底座;终端层**首版即上原生组件**(iOS SwiftTerm / Android Termux terminal-emulator 库,已核实 Apache-2.0),不接受 WebView xterm 作为长期形态。Expo 下自研 TurboModule 用 development build + config plugin 承载,密钥/本地文件用 expo-secure-store / expo-file-system,OTA 更新用 Expo Updates。
+2. **首端策略:Android 为主**:iOS 开发者账号/签名/审核流程有时间和金钱成本,Android 先行验证产品,iOS 后置或仅 IPA 打包验证;原生桥按双端共享接口设计,JS 层全复用。
+3. **首版范围(最小核心)**:SSH 终端(密码/密钥/host key 验证)+ SFTP 浏览与传输 + 端口转发 + 密钥管理 + vault(主机/分组/snippets)。其余能力(云同步、AI、系统管理器、插件/脚本/MCP、telnet/mosh/et/serial、x11)全部后置。
+4. **Capacitor 仅用于 PoC**:正式投入 RN 重写前,用 Capacitor + 现有 UI 快速验证交互与信息架构(≤2 周),产出移动端界面设计依据;验证完即弃,代码不进入产品线。
 
 **理由**:SSH 终端是重度键盘 + 高频刷屏场景,恰是 WebView 最弱的两个点;业界标杆(Blink Shell / JuiceSSH / Termius 移动端)均验证"原生终端 + 原生 SSH"路线。体验优先前提下,WebView 方案的开发速度优势不构成取舍理由。
 
 ## 6. 桌面能力 → 移动端映射表
 
+> **首版(最小核心)范围**:SSH 终端、SFTP/传输、端口转发、密钥管理、vault;下表其余能力后置。
+
 | 桌面能力 | 移动端方案 | 复用度 | 备注 |
 |---|---|---|---|
-| SSH 终端 | 原生 SSH 库(NMSSH/JSch)+ WebView xterm 或 SwiftTerm | 渲染复用(WebView 时);协议重写 | 移动端键盘/IME 是最大体验风险 |
+| SSH 终端 | 原生 SSH 库(NMSSH / mwiede-jsch)+ 原生终端(Termux terminal-emulator / SwiftTerm) | 协议重写;渲染原生 | 移动端键盘/IME 是最大体验风险 |
 | host key 验证 | 自研(桌面逻辑可参考,库不提供) | 逻辑复用 | **安全必做**,现有 RN 库默认不做 |
 | SFTP/SCP | 原生 SSH 库 SFTP;SCP 协议逻辑可移植 | 协议层 JS 可复用 | 大文件/并发需重写传输引擎 |
 | 全局传输引擎 | 重写(移动端并发模型不同) | 低 | transferBridge 289KB,依赖 utilityProcess |
@@ -118,23 +122,24 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 | 阶段 | 内容 | 出口标准 | 相对规模 |
 |---|---|---|---|
 | Phase 0 | PoC:Capacitor 现有 UI 验证交互/信息架构 + RN 骨架 spike(SSH 桥 + 原生终端渲染可行性) | 产出移动端界面设计依据;RN 技术风险验证完 | S |
-| Phase 1 | RN 骨架 + 认证体系(密码/密钥/host key)+ vault 迁移 + 原生终端(SwiftTerm / Termux emulator) | 真机可日常使用的基本 SSH 客户端 | M |
+| Phase 1 | **Android**:RN(Expo)骨架 + 认证体系(密码/密钥/host key)+ vault 迁移 + Termux terminal-emulator 终端 | 真机可日常使用的基本 SSH 客户端 | M |
 | Phase 2 | SFTP 浏览 + 上传下载/传输管理 | 文件操作可用 | M |
-| Phase 3 | 端口转发 + 密钥管理器 + known_hosts | 对齐桌面核心 | M |
-| Phase 4 | 云同步 + AI(API 直连)+ snippets + 系统管理器 | 覆盖桌面大部分高频能力 | M-L |
-| Phase 5 | 降级项定案(插件/MCP/脚本/telnet/mosh)+ 商店发布 | 商店上架 | M |
+| Phase 3 | 端口转发 + 密钥管理器 + known_hosts | 对齐桌面核心(最小核心完成) | M |
+| Phase 4 | iOS 适配(SwiftTerm + 签名/审核流程)或仅 IPA 打包验证 | iOS 可运行 | M |
+| Phase 5 | 扩展能力:云同步 / AI(API 直连)/ snippets / 系统管理器 + 商店发布 | 商店上架 | M-L |
 
 ## 8. 主要风险
 
 1. **终端维护成本**:原生终端组件双端各一份(iOS SwiftTerm / Android Termux terminal-emulator),需跟进上游与许可;WebView 方案已因体验原因排除。
 2. **原生 SSH 桥自研成本**:SSH/SFTP/转发/认证都要自研,且 iOS/Android 双实现,维护持续投入。
 3. **host key 验证缺失风险**:选用现成 RN 库必须自补验证,否则 MITM。
-4. **降级项决策**:插件/MCP/脚本/AI Agent CLI 在移动端不可用,"全功能对齐"的边界需要产品侧明确。
+4. **范围预期管理**:首版仅最小核心,云同步/AI/系统管理器等后置,需与用户预期对齐,避免"全功能对齐"误解。
 5. **商店合规**:私钥/known_hosts 落 Keychain/Keystore 的审核要求、iOS 本地网络权限弹窗文案。
 
-## 9. 未决问题(需评审确认)
+## 9. 决策记录(2026-08)
 
-1. ~~首版路线~~ **已决策(2026-08)**:体验优先 → 主推 RN 重写 + 原生终端(见第 5 节),Capacitor 仅作 PoC。
-2. **"全功能对齐"边界**:插件系统、脚本自动化、AI Agent CLI、serial/x11 转发在移动端不可用,是接受降级还是无限期推迟这些能力?
-3. **终端渲染**:倾向首版即原生;SwiftTerm 仅覆盖 iOS,Android 侧需评估 Termux terminal-emulator 的成熟度与许可。
-4. **团队与时间**:当前无移动端原生(iOS/Android)人力,原生桥自研部分是否外协或自建?
+1. **首版路线**:体验优先 → RN 重写 + 原生终端,Capacitor 仅作 PoC。✅
+2. **对齐边界**:最小核心优先 —— 首版仅 SSH 终端 / SFTP / 端口转发 / 密钥管理 / vault;云同步、AI、系统管理器、插件/脚本/MCP、telnet/mosh/et/serial、x11 全部后置。✅
+3. **终端渲染**:iOS = SwiftTerm;Android = Termux terminal-emulator 库(已核实 Apache-2.0,商用无传染风险)。✅
+4. **首端策略**:Android 为主(iOS 签名/账号/审核成本高),iOS 后置或仅 IPA 打包验证;原生桥双端共享接口、JS 层复用。✅
+5. **RN 形态**:Expo(development build + config plugin 承载自研 TurboModule)。✅
