@@ -146,7 +146,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | **网络设备模式** | P2 | 连接交换机/路由器等非 shell 设备时原样发送命令(无 shell 包装,对齐 terminal.networkDevice) |
 | 退格行为 | P2 | 退格键 BS/DEL 行为可配(backspaceBehavior,虚拟键盘相关) |
 | 显示增强 | P2 | 关键词高亮、行时间戳(对齐 keywordHighlight/showLineTimestamps) |
-| 会话断开通知 | P2 | 后台会话断开时系统通知提醒 |
+| 会话断开通知 | P2 | 后台会话断开时系统通知提醒(**移动端特有**,桌面为前台应用无此推送) |
 
 ### 3.4 SFTP 浏览与传输(P1)
 
@@ -162,7 +162,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | 远程复制/移动 | P1 | 文件/目录在远程目录间复制、移动 |
 | **传输冲突处理** | P1 | 同名文件冲突时选择 覆盖/重命名/跳过(对齐桌面 resolveConflict) |
 | **传输重试** | P1 | 失败传输可一键重试(不重新选择文件) |
-| 分享到系统 | P2 | 下载后的文件可通过系统分享(Android share sheet / iOS share) |
+| 分享到系统 | P2 | 下载后的文件可通过系统分享(Android share sheet / iOS share;**移动端特有**) |
 | **SFTP 跟随终端会话** | P1 | 从终端会话直接打开 SFTP 并定位当前工作目录(对齐 sftpFollowTerminalCwd/autoOpenSftpPanel) |
 | SFTP 书签 | P2 | 常用目录书签快捷访问(sftpBookmarks) |
 | SFTP 自动同步 | P2 | 本地目录变化自动上传(对齐桌面 autoSync/FileWatcher;移动端本地文件场景弱,记录) |
