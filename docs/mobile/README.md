@@ -84,7 +84,7 @@ Netcatty 是 Electron + React 19 + TypeScript 的桌面 SSH 管理器,能力覆�
 
 1. **首版直接走 RN(方案 A),工程形态 Expo**:UI 按移动原生交互模型重写;SSH 桥(iOS NMSSH / Android mwiede-jsch)为共同必建底座;终端层**首版即上原生组件**(iOS SwiftTerm / Android Termux terminal-emulator 库,已核实 Apache-2.0),不接受 WebView xterm 作为长期形态。Expo 下自研 TurboModule 用 development build + config plugin 承载,密钥/本地文件用 expo-secure-store / expo-file-system,OTA 更新用 Expo Updates。
 2. **首端策略:Android 为主**:iOS 开发者账号/签名/审核流程有时间和金钱成本,Android 先行验证产品,iOS 后置或仅 IPA 打包验证;原生桥按双端共享接口设计,JS 层全复用。
-3. **首版范围(最小核心)**:SSH 终端(密码/密钥/host key 验证)+ SFTP 浏览与传输 + 端口转发 + 密钥管理 + vault(主机/分组/snippets)。其余能力(云同步、AI、系统管理器、插件/脚本/MCP、telnet/mosh/et/serial、x11)全部后置。
+3. **最小核心全集(分版本交付,见 PRD 第 5 节版本规划)**:SSH 终端(密码/密钥/host key 验证)+ SFTP 浏览与传输 + 端口转发 + 密钥管理 + vault(主机/分组/snippets)。其中 **v1.0(MVP)= vault + 认证 + SSH 终端 + 密钥导入/删除**,v1.1 加 SFTP,v1.2 加端口转发/跳板/证书认证等。其余能力(云同步、AI、系统管理器、插件/脚本/MCP、telnet/mosh/et/serial、x11)全部后置。
 4. **Capacitor 仅用于 PoC**:正式投入 RN 重写前,用 Capacitor + 现有 UI 快速验证交互与信息架构(≤2 周),产出移动端界面设计依据;验证完即弃,代码不进入产品线。
 
 **理由**:SSH 终端是重度键盘 + 高频刷屏场景,恰是 WebView 最弱的两个点;业界标杆(Blink Shell / JuiceSSH / Termius 移动端)均验证"原生终端 + 原生 SSH"路线。体验优先前提下,WebView 方案的开发速度优势不构成取舍理由。
