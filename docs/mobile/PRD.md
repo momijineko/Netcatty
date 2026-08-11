@@ -98,7 +98,7 @@ Netcatty 移动版是桌面 SSH 管理器的**移动端配套客户端**:用户�
 | 保活设置 | P2 | keepalive 间隔/超时可配(主机级) |
 | SSH agent / agent forwarding | P2 | 记录:移动端无系统 agent,跳板链 agent 转发需内置 agent,复杂度高,后置 |
 | 环境变量 | P2 | 连接时注入环境变量(envVars) |
-| **证书认证** | P1 | 支持 SSH 证书认证(CA 签名,HostAuthMethod=certificate,桌面完整支持);**风险:移动端 JSch/libssh2 证书支持需 PoC 验证** |
+| **证书认证** | P1 | 支持 SSH 证书认证(CA 签名,HostAuthMethod=certificate);**可行性已调研:Android(mwiede/jsch ≥2.28 修复版)直接可用;iOS(NMSSH)条件可用(RSA 开箱即用,需重编译 libssh2≥1.11;ed25519 用户证书可仿桌面 netcattyAgent.cjs 自研签名回调)** |
 
 ### 3.2.1 跳板机与代理(P1)
 
