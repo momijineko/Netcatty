@@ -4,6 +4,7 @@
 > 基线: `mobile@121ba2cb`
 > 产品范围: 见 `PRD.md`
 > 桌面能力证据与处置: 见 `ALIGNMENT.md`
+> AI 串行执行任务与提示词: 见 `AI_TASK_PROMPTS.md`
 
 ## 1. 文档目的
 
