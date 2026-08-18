@@ -1,7 +1,8 @@
 # Netcatty Mobile 桌面能力处置审计
 
 > 审计日期: 2026-08-18
-> 审计基线: `mobile@121ba2cb`，与 `main` 的分叉点 `028e86b1`
+> 移动文档基线: `mobile@21a3d084`
+> 桌面代码基线: `upstream/main@c4edefdb`
 > 审计对象: `docs/mobile/PRD.md`、`docs/mobile/README.md` 与当前桌面代码
 > 目标: 每个桌面能力都有可追踪的移动端处置，不把“已处置”误写为“已实现”
 
@@ -29,19 +30,17 @@
 
 ```bash
 git rev-parse HEAD
-git merge-base mobile main
-git diff --name-only main...mobile
+git rev-parse upstream/main
+git merge-base mobile upstream/main
+git diff --name-only upstream/main...mobile
 git log --author=momijineko --format='%H' -- docs/mobile | wc -l
-git show 121ba2cb:docs/mobile/ALIGNMENT.md | wc -l
-git show 121ba2cb:docs/mobile/PRD.md | wc -l
-git show 121ba2cb:docs/mobile/README.md | wc -l
 wc -l docs/mobile/*.md
 find electron/bridges -maxdepth 1 -type f ! -name '*.test.*' ! -name '*.spec.*' | wc -l
 rg -o 'ipcMain\.handle\(' electron --glob '*.cjs' --glob '!**/*.test.cjs' --glob '!**/*.spec.cjs' | wc -l
 rg -o 'ipcRenderer\.on\(' electron/preload/api.cjs | wc -l
 ```
 
-审计前结果: 移动分支比 `main` 仅多 3 份移动文档；`momijineko` 有 38 个相关提交。审计基线提交中的 `ALIGNMENT.md`、`PRD.md`、`README.md` 分别为 73、306、145 行，合计 524 行；`wc -l docs/mobile/*.md` 则显示当前工作树，随本轮修订变化。非测试顶层 bridge 文件为 82 个，`ipcMain.handle(` 文本匹配合计 362，preload 的 `ipcRenderer.on(` 文本匹配为 47。后两项只是可复现文本计数，不等于稳定 API 数量。
+同步后结果: `mobile` 已包含 `upstream/main@c4edefdb`，相对上游只多 `docs/mobile/AI_TASK_PROMPTS.md`、`ALIGNMENT.md`、`PRD.md`、`README.md` 四份移动文档；`momijineko` 有 38 个相关文档提交。同步时四份文档分别为 564、212、570、207 行，随本轮修订继续变化。非测试顶层 bridge 文件为 85 个，`ipcMain.handle(` 文本匹配合计 366，preload 的 `ipcRenderer.on(` 文本匹配为 48。后两项只是可复现文本计数，不等于稳定 API 数量。
 
 ## 3. 桌面能力处置矩阵
 
@@ -54,7 +53,7 @@ rg -o 'ipcRenderer\.on\(' electron/preload/api.cjs | wc -l
 | V-05 | 独立 Vault Notes：标题、正文、层级分组、标签、关联主机、搜索、MD/TXT 导入、MD/ZIP 导出 | 后置；与 `Host.notes` 分开 | vNext | `domain/models/connection.ts`; `domain/notes.ts`; `components/notes/NotesManager.tsx` |
 | V-06 | 本地加密备份、保留、预览、恢复；云同步快照/冲突/修订；桌面 `ManagedSource` 描述符独立持久化且不在当前 backup/sync payload 中，Host 仍可能带 `managedSourceId` | 本地备份进入 v1.2、云同步后置；恢复时必须携带可重新授权的源描述符，或去除/修复悬空 `managedSourceId`，不得把桌面 `filePath` 假定为跨端可用 | v1.2/vNext | `application/syncPayload.ts`; `application/state/useVaultState.ts`; `components/cloud-sync/CloudSyncLocalBackupsPanel.tsx`; `domain/models/history.ts` |
 | V-07 | 主机 CSV 导出：字段映射、密码、KeyPath、passphrase、IPv6、跳过不可表示协议与结果提示 | 后置且需安全决策；移动端默认不让明文格式携带凭据，兼容例外需高摩擦确认 | vNext | `components/VaultView.tsx`; `application/vaultCsvExportCredentials.ts`; `domain/vaultImport/csvExport.ts` |
-| V-08 | Quick Connect：解析 `user@host:port`、括号/裸 IPv6 与有限 `ssh` 命令参数；忽略项警告；SSH/Mosh/ET/Telnet、password/key/certificate/Identity；连接或保存主机 | 等价且纠正范围：桌面直接自定义认证 UI 只有 password/key，certificate 仅能经已保存 Identity 间接使用；移动 v1.1 交付 SSH password/key，certificate/Identity 随 v1.2 Keychain/Identity 能力交付。桌面此入口没有跳板/代理编辑；未保存连接是 ephemeral，不能进入 vault 或 session restore；移动若增加跳板属于新增 | v1.1/v1.2/vNext | `domain/quickConnect.ts`; `domain/quickConnectHost.ts`; `components/QuickConnectWizard.tsx` |
+| V-08 | Quick Connect：解析 `user@host:port`、括号/裸 IPv6、有限 `ssh` 命令参数和 PuTTY 风格命令行参数；忽略项警告；SSH/Mosh/ET/Telnet、password/key/certificate/Identity；连接或保存主机 | 等价且纠正范围：桌面直接自定义认证 UI 只有 password/key，certificate 仅能经已保存 Identity 间接使用；移动 v1.1 交付 SSH password/key，certificate/Identity 随 v1.2 Keychain/Identity 能力交付。桌面此入口没有跳板/代理编辑；未保存连接是 ephemeral，不能进入 vault 或 session restore；移动若增加跳板属于新增。PuTTY 参数解析必须保留可应用字段、逐项报告忽略项并禁止 URL/命令行凭据进入历史或 Vault | v1.1/v1.2/vNext | `domain/quickConnect.ts`; `domain/quickConnectHost.ts`; `components/QuickConnectWizard.tsx`; `electron/puttyCommandLine.cjs`; `electron/deepLink.cjs` |
 | V-09 | Quick Switcher：搜索 Hosts、Vault/SFTP tab、workspace/session、本地 shell、插件 command/view；主机连接/编辑和新建 workspace | 结果拆分处置：移动全局搜索保留主机、会话与核心目的地并整体后置；workspace、本地 shell 不适用；插件 command/view 随插件后置；设置搜索是另一能力，不能误报为桌面 Quick Switcher 基线 | vNext | `components/QuickSwitcher.tsx`; `application/app/AppHandlers.ts`; `domain/settingsSearchCatalog.ts` |
 | V-10 | 复制主机地址与明文账密：Vault/终端可复制 hostname；Vault 账密复制先应用分组继承，再解析 SSH/Telnet、Identity、IPv6 和非默认端口，输出 host/username/password；无可读密码时不写剪贴板 | 地址复制等价；账密复制等价结果但安全强化，复制前再次认证并明确系统剪贴板历史/同步风险，平台允许时限时清除，锁定或后台时不可触发；plugin endpoint、无密码和写入失败均有明确结果 | v1.0/v1.2 | `components/VaultView.tsx`; `domain/host.ts`; `components/host/HostTreeContextMenus.tsx`; `components/terminal/TerminalView.tsx` |
 | V-11 | Vault 八个 section：Hosts、Keychain、Proxy Profiles、Snippets、Notes、Port Forwarding、Known Hosts、Connection Logs | 全部登记移动页面、入口和版本；可合并导航但不能让分阶段能力在其承诺版本不可达，具体映射见 PRD 2.1 | v1.0-vNext | `components/VaultView.tsx`; `components/vault/VaultViewLayout.tsx` |
@@ -70,6 +69,7 @@ rg -o 'ipcRenderer\.on\(' electron/preload/api.cjs | wc -l
 | T-01 | VT/xterm 终端、UTF-8/GB18030、宽字符、URL、回滚搜索、Ctrl 信号；大输出 transport/renderer 背压、消费 ACK、pause/drain 和紧急中断优先级 | 等价；搜索桌面基线固定不区分大小写、非正则、非整词，支持前后导航、清除高亮与关闭后回焦；终端引擎与渲染形态待真机对照 Gate。移动 bridge 必须按实际消费确认输出，以高/低水位滞回限制 transport 与渲染队列；休眠、重挂载、snapshot/owner handoff 和关闭前 drain，失败不可保存过期快照；Ctrl+C 等紧急输入不被输出洪水阻塞，恢复后不丢失、重复或乱序输出。阈值由真机 Gate 决定，不照搬 Electron 常量 | v1.0/v1.1 | `components/Terminal.tsx`; `components/terminal/hooks/useTerminalSearch.ts`; `components/terminal/TerminalSearchBar.tsx`; `components/terminal/runtime/terminalOutputPipeline.ts`; `components/terminal/runtime/terminalSessionAttachment.ts`; `electron/bridges/terminalFlowAck.cjs`; `electron/bridges/terminalFlowPauseArbiter.cjs`; `electron/bridges/terminalEncoding.cjs` |
 | T-02 | 移动键盘、IME、Esc/Ctrl/Alt/Tab/方向键/符号、多行 Compose Bar | 移动替代，必须做设备级验收 | v1.0/v1.1 | `components/terminal/TerminalComposeBar.tsx`; `components/terminal/TerminalToolbar.tsx` |
 | T-03 | 多会话、顶层标签重排、重连、重命名、复制、编辑来源 Vault 主机、关闭当前/其他/右侧/全部、广播、恢复/CWD、后台输出/BEL 活动指示 | 等价；会话核心、重排、重连代际和活动指示在 v1.0，restore/CWD 在 v1.1，编辑来源/批量关闭/后台恢复在 v1.x，busy 检测和广播后置。长按菜单/编辑排序替代鼠标拖动并提供无障碍移动；activity 是瞬时状态，不进入 restore，移动 v1.0 不实现 workspace 聚合，系统通知另属移动新增；`tabOrder`、活动标签和自定义名可恢复，但不恢复输出或凭据；ephemeral/local 不显示编辑主机。同一逻辑 session 每次连接使用单调 generation/opaque owner，旧启动、host-key/MFA、输出、exit、发行版/CWD 探测和 cleanup 不得污染或关闭新连接 | v1.0/v1.1/v1.x/vNext | `components/top-tabs/SessionTabContextMenuContent.tsx`; `components/TopTabs.tsx`; `components/terminalLayer/useTerminalLayerEffects.ts`; `components/TerminalLayer.tsx`; `components/terminal/runtime/createTerminalSessionStarters.ts`; `components/terminal/runtime/terminalDistroDetection.ts`; `electron/bridges/sessionBootEpoch.cjs`; `electron/bridges/terminalWorkerManager.cjs`; `application/state/sessionActivity.ts`; `application/state/sessionActivityStore.ts`; `application/state/useSessionState.ts`; `application/state/sessionRestoreState.ts`; `domain/sessionRestore.ts` |
+| T-15 | OSC 9/777/99 终端通知：OSC9 简单正文、OSC777 title/body、OSC99 分片/编码/关闭；焦点模式、文本清洗、长度上限、每 session 限流和 CAN/SUB 中止 | 桌面能力已验证；移动不直接复用桌面系统通知。移动若进入 vNext，需定义权限、后台/锁屏脱敏、点击回 session、session activity 联动、去重/限流和通知关闭后的终态；通知内容不得包含秘密或未经用户授权的命令输出 | vNext + platform Gate | `domain/terminalOscNotifications.ts`; `application/state/oscDesktopNotifications.ts`; `components/Terminal.tsx`; `electron/bridges/systemNotification.cjs` |
 | T-04 | 多窗口、detach、workspace 分屏/焦点模式 | 不适用；多标签、最近会话、标签分组替代 | - | `domain/models/workspace.ts`; `application/state/useSessionState.ts` |
 | T-05 | scrollback、TERM、字体/粗细/行距/fallback/ligatures、ANSI 粗体亮色、光标、对比度、字号临时缩放、滚动/选择/复制/链接策略 | 等价设置，设备不支持项显式降级；移动为缩放提供触控增减/重置，双指缩放待 Gate，不能只保留桌面快捷键/滚轮；`drawBoldInBrightColors` 当前无设置 UI但影响渲染并进入同步 payload，迁移时保留默认/字段或显式废弃，不能静默反转；WebKit smoothing 与 webgl/dom renderer 不作为跨端产品开关。普通 URL、OSC 8 与插件链接统一限制为 `http(s)`，OSC 8 保留确认；桌面右键 `select-word` 当前错误调用 `selectAll()`，移动按真实词边界实现而不继承缺陷 | v1.1/vNext | `domain/models/terminal.ts`; `application/syncPayload.ts`; `components/settings/tabs/SettingsTerminalTab.tsx`; `components/terminal/runtime/createXTermRuntime.ts`; `components/terminal/runtime/terminalFontZoom.ts`; `components/terminal/runtime/terminalLinkHandler.ts`; `components/terminal/hooks/useTerminalContextActions.ts` |
 | T-06 | bracketed paste、OSC 52、直接粘贴当前终端选区、shell `clear` scrollback 策略、独立 Clear Buffer、动态标题、自动关闭、启动命令延迟、剪贴板图片上传并回填路径、Kitty keyboard、隐藏渲染器休眠 | 等价、替代或后置，安全默认值保留；Paste Selection 不经过系统剪贴板。动态标题运行时当前只消费全局 `off/agent/all`；`Host.disableDynamicTabTitle` 只是未接线的兼容字段，移动须保留字段并单独决定是否新增主机级覆盖。桌面 Clear Buffer 只在 xterm normal screen 清视图并可选擦 scrollback，后端 `clearPty` 仅同步本地 Windows ConPTY 光标且对 SSH/Unix PTY no-op；移动“不回放已清本地缓存”是新增验收契约，不能冒充桌面通用 replay-buffer 清理；自动关闭只作用于已确认的零码正常退出，故障退出保留诊断；启动延迟同时控制首次发送与 `lineDelay` 行间隔；图片上传不等于 inline image 渲染；移动资源回收需独立 gate | v1.1/vNext | `domain/models/terminal.ts`; `domain/models/keyBindings.ts`; `domain/models/connection.ts`; `domain/sessionTabTitle.ts`; `application/state/resolveTerminalSessionExitIntent.ts`; `components/settings/tabs/TerminalBehaviorSettings.tsx`; `components/terminal/clearTerminalViewport.ts`; `components/terminal/hooks/useTerminalContextActions.ts`; `components/terminal/runtime/terminalStartupCommands.ts`; `components/terminal/terminalClipboardPaste.ts`; `electron/bridges/terminalBridge.cjs` |
@@ -90,6 +90,7 @@ rg -o 'ipcRenderer\.on\(' electron/preload/api.cjs | wc -l
 | F-07 | 内置编辑器 10 MB 上限、语言模式/自动换行、多编辑器标签与 dirty 状态；手动关闭 SFTP tab/断开时 save/discard/cancel，App quit 阻止 dirty 退出，但关闭 owning terminal 会随 side panel 卸载强制丢弃其 dirty editor；外部打开/关联、临时文件、watcher 单向自动回传 | 编辑能力等价，关闭 owner/session/workspace/退出前统一 save/discard/cancel 属移动数据保护增强；系统 document provider 替代外部编辑；桌面 watcher 不检测远端版本，移动回传策略待 gate | v1.1/vNext | `components/sftp/sftpEditorFileLimits.ts`; `components/editor/TextEditorPane.tsx`; `components/sftp/hooks/useSftpViewTabs.ts`; `components/SftpSidePanel.tsx`; `application/app/useAppStartupEffects.ts`; `electron/bridges/fileWatcherBridge.cjs` |
 | F-08 | SFTP 双窗格、本地文件窗格、拖拽、OS 剪贴板文件上传 | 桌面双窗格、本地 pane 和拖拽机制不适用；v1.1 以系统 picker 完成文件/目录上传。系统分享接收/回传是移动替代候选，随平台 Gate 后置；不能把 v1.1 picker 误写为 vNext | -/v1.1/vNext | `components/SftpView.tsx`; `components/sftp/clipboardUpload.ts` |
 | F-09 | SFTP 内部 copy/cut/paste：记录来源连接/路径/pane，跨连接传输，cut 成功后删源，部分失败保留 | 等价但交互替代；单窗格用来源/目标标签和路径选择，不与 OS 文件剪贴板混用 | v1.1 | `application/state/sftp/sftpClipboardStore.ts`; `components/sftp/hooks/useSftpKeyboardShortcuts.ts` |
+| F-10 | 常见归档/单文件压缩解压：远端 `tar/unzip` 能力探测和回退、本地解压计划、临时 staging、原子替换、超时与错误 | 移动替代；v1.1 长按菜单可提供，但必须限制已知格式、正确转义远端路径、隔离临时文件、可取消并显示工具缺失/目标冲突/部分结果；不得实现任意远程 shell 解压入口 | v1.1 + Gate | `electron/bridges/sftpBridge/archiveExtract.cjs`; `components/sftp/useSftpPaneTreeContextMenu.tsx`; `components/sftp/SftpPaneView.tsx`; `domain/sftpArchive.ts` |
 | P-01 | 本地/远程/动态转发、bind address、多规则、CRUD/复制、状态/错误、流量；grid/list、排序/手动重排、wizard/完整表单偏好 | 本地/远程等价；动态与流量后置；移动可替换布局但保留排序、手动顺序和新建流程偏好结果 | v1.2/vNext | `domain/models/portForwarding.ts`; `application/state/usePortForwardingState.ts`; `components/PortForwardingNew.tsx` |
 | P-02 | 跳板、自动启动、网络恢复重连、关闭清理、host key | 等价；校验 SSH 隧道主机/每跳，不校验普通 TCP 目标 | v1.2 | `application/state/usePortForwardingAutoStart.ts`; `electron/bridges/portForwardingBridge.cjs` |
 | K-01 | 密钥生成 RSA/ECDSA/ED25519、导入、查看、删除、复制公钥、passphrase 策略、reference key；grid/list 与手动顺序；旧 biometric/FIDO2/passkey/WebAuthn 实验记录隔离 | 等价；系统安全存储；v1.0/v1.2 读取并保留实体顺序，vNext 再提供 grid/list 与触摸重排 UI；公钥复制不得夹带私钥/passphrase。旧实验记录保持不可执行归档，解释需重新录入，不得静默转成 SSH key；清空 Vault 前把归档列入删除影响 | v1.0/v1.2/vNext | `domain/models/connection.ts`; `application/state/useVaultState.ts`; `infrastructure/config/storageKeys.ts`; `components/KeychainManager.tsx`; `components/keychain/GenerateStandardPanel.tsx` |
@@ -175,6 +176,19 @@ rg -o 'ipcRenderer\.on\(' electron/preload/api.cjs | wc -l
 34. 桌面的空库/收缩保护不是统一边界：Settings 的单 provider Sync 直接调用 `syncToProvider`，绕过 `useAutoSync` 的空 payload guard；保留旧 remote anchor 且远端未变化时，启动检查会直接认为一致而不核对本地丢失；默认 snippets 还可能掩盖其他实体丢失。移动端必须让所有自动、手动和恢复入口共用同一 preflight，不能把桌面注释里的“both auto and manual”当作已实现事实。
 35. 桌面“清空本地数据并重置同步”不创建保护备份或 apply barrier，`resetLocalVersion()` 清 base/anchor 却保留 canonical CRDT replica，因此“下次一定从云端下载”并不成立。多 provider 分叉目前只有事件/诊断，设置页不展示；legacy smart merge 对双方新增/修改的同 ID 冲突偏向 local，只计数而不提供逐项审查。移动同步设计必须显式修正这些缺陷，而不是照搬其成功提示。
 36. 桌面目录传输确实边发现边传，但 parent `totalBytes`/全局进度是已发现文件数上的 soft progress，没有显式 discovery-complete/final-total freeze；移动端要求分开显示已发现量、已传输量并在发现完成前保持不确定百分比/ETA，是增强契约而非桌面现状。
+
+## 4.1 上游同步增量审计
+
+本轮将 `upstream/main@c4edefdb` 合并到移动分支。相对上一移动文档基线，新增或变化的桌面事实已重新登记：
+
+| 增量 | 移动端处置 |
+|---|---|
+| `es` 成为正式 UI locale | 更新语言矩阵；移动缺失文案回退英文，不显示 key |
+| OSC 9/777/99 桌面通知 | 新增 T-15；通知与 activity dot 分离，移动权限、锁屏和后台行为另过 Gate |
+| SFTP 归档/单文件压缩解压 | 新增 F-10；长按入口、已知格式、临时文件、原子替换和取消必须可观察 |
+| PuTTY 风格命令行参数 | 更新 V-08/X-08 的输入 fixture；保留忽略项警告和 ephemeral 凭据边界 |
+| 动态 group path、snippet/script targets、原子组变更 | V-02/S-01/S-02 需要重命名迁移、删除收缩和失败回滚 |
+| 终端搜索/选择/背压、SSH 复用、SFTP 重连安全修正 | Phase 0 fixture 以当前上游行为为准，不复刻已修复桌面缺陷 |
 
 ## 5. 双向审计规则
 

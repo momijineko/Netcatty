@@ -1,7 +1,7 @@
 # Netcatty Mobile AI Task Prompts
 
 > 用途：把移动端路线拆成可串行执行的 AI 任务。
-> 当前基线：移动端尚未开始开发；先完成 M0 和 P0，再进入 v1.0。
+> 当前基线：移动端尚未开始开发；桌面代码基线为 `upstream/main@c4edefdb`；先完成 M0 和 P0，再进入 v1.0。
 > 关联文档：[PRD](./PRD.md)、[技术可行性草案](./README.md)、[桌面能力处置审计](./ALIGNMENT.md)
 
 ## 使用规则
@@ -186,7 +186,7 @@ Android/iOS 均需有可重复 fixture 和结果；任何 changed-key 绕过都�
 
 ```text
 你现在只执行任务 P0-05：对比 RN 原生终端与 WebView+xterm.js。
-使用同一 SSH server、VT/ANSI corpus、设备档位和 release build，测输入回显、掉帧、内存、IME、组合字符、选择复制、10 MB 输出、旋转和前后台。
+使用同一 SSH server、VT/ANSI corpus、设备档位和 release build，测输入回显、掉帧、内存、IME、组合字符、选择复制、10 MB 输出、旋转和前后台；加入 OSC 9/777/99 通知解析、文本清洗、限流和 CAN/SUB 中止 fixture。
 还要验证 bridge 背压、乱序、重复、取消和 JS reload 清理；根据数据更新技术路线 ADR，不凭主观偏好选型。
 ```
 
@@ -334,7 +334,8 @@ bootEpoch/generation 不匹配的旧事件不得污染新连接；activity 不�
 
 ```text
 你现在只执行任务 F1-01：实现单远端 SFTP 浏览和基础目录操作。
-支持 home、list、stat、mkdir、rename、delete、chmod，并复用 v1.0 的 host-key、认证和 session scope。
+支持 home、list、stat、mkdir、rename、delete、chmod，并提供常见归档/单文件压缩的长按解压入口；解压只允许已知格式，复用 v1.0 的 host-key、认证和 session scope。
+远端工具探测、路径转义、临时 staging、原子替换、取消、超时和工具缺失必须有明确结果，不得拼接任意 shell 命令。
 加载、空目录、权限拒绝、断网和取消状态必须可见；不要依赖桌面双窗格。
 ```
 
@@ -398,7 +399,7 @@ cut 只有目标完成且源删除成功后才清除来源；部分失败保留�
 
 ```text
 你现在只执行任务 F1-09：实现 SSH Quick Connect。
-支持 user@host:port、括号/裸 IPv6 和有限 ssh 参数；无法应用的参数逐项警告。
+支持 user@host:port、括号/裸 IPv6、有限 ssh 参数和 PuTTY 风格命令行参数；无法应用的参数逐项警告。
 v1.1 只执行直接 password/key；未保存连接保持 ephemeral，不进入 Vault 或 session restore，不实现未经决策的跳板编辑。
 ```
 

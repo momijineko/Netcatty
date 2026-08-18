@@ -1,7 +1,8 @@
 # Netcatty Mobile 技术可行性草案
 
 > 状态: 调研阶段，移动端尚未开始开发
-> 基线: `mobile@121ba2cb`
+> 移动文档基线: `mobile@21a3d084`
+> 桌面代码基线: `upstream/main@c4edefdb`
 > 产品范围: 见 `PRD.md`
 > 桌面能力证据与处置: 见 `ALIGNMENT.md`
 > AI 串行执行任务与提示词: 见 `AI_TASK_PROMPTS.md`
@@ -16,7 +17,7 @@
 
 ## 2. 可由仓库确认的桌面边界
 
-当前桌面应用是 Electron + React + TypeScript。核心外部边界包括:
+当前桌面应用是 Electron + React + TypeScript。上游当前 UI locale 为 `en`、`es`、`ru`、`zh-CN`、`zh-TW`；移动端不能继续按旧的四语言基线规划。核心外部边界包括:
 
 | 能力域 | 桌面实现 | 移动端影响 |
 |---|---|---|
@@ -55,7 +56,7 @@
 
 连接复用属于共享安全契约而不只是性能优化。复制会话或打开新 shell、SFTP channel、端口转发时，只有 host/profile、认证、跳板/代理、keepalive、SUDO 和 agent-forwarding policy 满足规定的等价关系才可借用已认证 transport；shell 的 agent forwarding 必须精确匹配。无法证明一致、transport 不健康或协议为 Mosh/ET/Telnet/Serial/local 时新建连接，不能为减少 MFA 次数跨安全上下文复用。普通 SFTP 浏览和共享传输可以持有 endpoint lease；重启恢复或显式专用传输必须能请求独立连接，不附着 terminal/parked transport，允许重新认证/MFA，并在关闭交互终端后继续由任务自身管理生命周期。
 
-会话状态模型必须把显示状态与连接/任务所有权分开。顶层标签顺序、活动标签和自定义名属于可恢复元数据；activity dot 是瞬时标签状态，不属于 restore。非当前会话收到经过控制序列过滤的可见输出或 BEL 时，桌面会在标签上显示 activity dot；workspace 聚合子会话活动，进入对应会话/workspace 后清除。移动端 v1.0 必须保留每会话的标签内活动结果；系统通知是独立的移动新增能力，不能用通知替代活动点，也不能把活动点误判为连接状态。桌面 Clear Buffer 只保证 normal-screen xterm 视图清理和可选 scrollback 擦除，后端同步仅适用于本地 Windows ConPTY；移动端应另行保证自身渲染缓存清理后不会在重挂载时回放旧输出。启用自动关闭也只在明确的零码正常退出后删除会话，异常、超时或未知关闭保留诊断现场。自动重连的移动策略另建状态机并记录停止原因，不能直接把桌面固定 5 秒无限循环描述成有限指数退避。
+会话状态模型必须把显示状态与连接/任务所有权分开。顶层标签顺序、活动标签和自定义名属于可恢复元数据；activity dot 是瞬时标签状态，不属于 restore。非当前会话收到经过控制序列过滤的可见输出或 BEL 时，桌面会在标签上显示 activity dot；workspace 聚合子会话活动，进入对应会话/workspace 后清除。上游桌面还会解析 OSC 9/777/99 通知，并执行 `off/unfocused/always`、文本清洗、长度上限和会话级限流；移动端 v1.0 必须保留每会话的标签内活动结果，系统通知仍是独立的移动新增能力，不能用通知替代活动点，也不能把活动点误判为连接状态。桌面 Clear Buffer 只保证 normal-screen xterm 视图清理和可选 scrollback 擦除，后端同步仅适用于本地 Windows ConPTY；移动端应另行保证自身渲染缓存清理后不会在重挂载时回放旧输出。启用自动关闭也只在明确的零码正常退出后删除会话，异常、超时或未知关闭保留诊断现场。自动重连的移动策略另建状态机并记录停止原因，不能直接把桌面固定 5 秒无限循环描述成有限指数退避。
 
 会话日志也不是三个扩展名共享一个序列化器：raw 写入未渲染终端流，txt/html 通过有状态 cursor/erase/ANSI renderer 生成快照，alternate-screen TUI paint 被省略以保留 shell 历史。移动日志 adapter 必须分别定义编码、时间戳、ANSI 和保真边界，并以同一 corpus 做 contract test。
 
@@ -123,15 +124,15 @@ SSH 经受控网关中转可以降低部分客户端协议实现负担，但会�
 
 1. SSH connect -> host-key decision -> password/key/passphrase/kbd-interactive -> shell -> resize -> disconnect；并发连接分别验证 request/session/boot 归属、队列切换、迟到响应、断连/超时清理、错误已保存 passphrase 清除、skip-key 与 cancel-flow，以及 OTP/二次因子不被预填或保存为登录密码。
 2. 一条多级跳板/代理链，逐跳错误和取消可定位。
-3. 终端软键盘、IME、外接键盘、alternate screen、选择/复制/直接粘贴选区、回滚与持续输出；搜索以桌面固定的 case-insensitive/literal/non-whole-word fixture 验证前后导航、清空高亮和关闭后回焦，新增高级选项另行标记；另以统一 fixture 验证真实词边界选择、触控字号增减/重置、普通 URL/OSC 8/plugin 链接的 `http(s)` 安全门和 OSC 8 确认，不继承桌面 `select-word -> selectAll` 缺陷。大输出切片还需证明实际消费 ACK、有界队列、高/低水位滞回、pause/drain、休眠/重挂载/关闭无丢重乱序，以及 backlog 下 Ctrl+C 紧急输入不被渲染阻塞。
-4. SFTP 浏览和流式上传/下载；SCP fallback 作为独立能力验证。桌面普通目录是单遍增量发现并在已发现文件数上显示 soft progress，没有显式最终总量事件；移动端以增强契约验证分别报告已发现量与已传输量，不把发现未完成阶段显示为稳定全目录百分比/ETA，完成发现后才冻结最终总量；压缩上传另行验证全量扫描/压缩/上传/解压阶段及回退。分别量化文件/目录 worker、递归目录 listing gate 和单文件请求 fanout，不能用一个“并发”数字替代三种资源边界。
+3. 终端软键盘、IME、外接键盘、alternate screen、选择/复制/直接粘贴选区、回滚与持续输出；搜索以桌面固定的 case-insensitive/literal/non-whole-word fixture 验证前后导航、清空高亮和关闭后回焦，新增高级选项另行标记；另以统一 fixture 验证真实词边界选择、触控字号增减/重置、普通 URL/OSC 8/plugin 链接的 `http(s)` 安全门和 OSC 8 确认，不继承桌面 `select-word -> selectAll` 缺陷；增加 OSC 9/777/99 通知解析、清洗、限流和 CAN/SUB 中断 fixture，但移动系统通知权限另行验证。大输出切片还需证明实际消费 ACK、有界队列、高/低水位滞回、pause/drain、休眠/重挂载/关闭无丢重乱序，以及 backlog 下 Ctrl+C 紧急输入不被渲染阻塞。
+4. SFTP 浏览和流式上传/下载；SCP fallback 作为独立能力验证。桌面普通目录是单遍增量发现并在已发现文件数上显示 soft progress，没有显式最终总量事件；移动端以增强契约验证分别报告已发现量与已传输量，不把发现未完成阶段显示为稳定全目录百分比/ETA，完成发现后才冻结最终总量；压缩上传和上游新增的归档解压另行验证全量扫描/压缩/上传/解压阶段、远端工具回退、临时文件和路径安全。分别量化文件/目录 worker、递归目录 listing gate 和单文件请求 fanout，不能用一个“并发”数字替代三种资源边界。
 5. 本地/远程转发的启动、连接、停止、切网和异常清理。
 6. 安全存储写入/读取/删除、设备锁定、App 重装/恢复边界。
 7. 文件选择、目录权限、App 被杀后的任务记录和可恢复范围。
 8. 两个独立远端之间的传输，来源/目标分别完成认证、跳板和 host-key 校验；验证 copy/cut、部分失败与删源失败。
 9. 系统文件编辑回传：远端版本同时变化、URI 权限撤销、App 被杀与临时副本清理；据此选择校验、确认或禁用自动回传。
 10. 系统 SSH agent/应用内 agent 探针：分别验证登录 selector、`IdentitiesOnly`、agent forwarding、权限撤销和后台清理；平台不支持时产出明确 blocked 结果，而非以私钥导入代替。
-11. Quick Connect 与连接复用：用 IPv4/IPv6、有限 `ssh` 参数和忽略项 fixture 验证解析/警告/ephemeral 保存边界；v1.1 只执行 SSH 的直接 password/key，certificate 与已保存 Identity 随 v1.2 Keychain/Identity 能力交付，Mosh/ET/Telnet 字段保留且显示 unsupported；复制 shell、SFTP 和转发分别验证同 endpoint 免重复 MFA、策略变化后拒绝复用、失败回退和资源 lease 清理。
+11. Quick Connect 与连接复用：用 IPv4/IPv6、有限 `ssh` 参数、PuTTY 风格参数和忽略项 fixture 验证解析/警告/ephemeral 保存边界；v1.1 只执行 SSH 的直接 password/key，certificate 与已保存 Identity 随 v1.2 Keychain/Identity 能力交付，Mosh/ET/Telnet 字段保留且显示 unsupported；复制 shell、SFTP 和转发分别验证同 endpoint 免重复 MFA、策略变化后拒绝复用、失败回退和资源 lease 清理。
 12. SFTP 符号链接与目录恢复：文件链接、目录链接、断链、循环、深链和超大目录 fixture 覆盖 SFTP/SCP；分别验证导航、下载展开、上传/远端复制策略、取消以及重启恢复的确定性与上限。
 13. 剪贴板安全：分别验证 hostname、公钥和解析分组/Identity/Telnet 后的账密复制；覆盖无密码、不可解密占位符、认证取消、App 切后台/锁定、写入拒绝、平台过期/清除能力以及无法撤回系统历史的提示。
 14. 会话与终端生命周期：重排后冷启动保持顶层 `tabOrder` 和活动标签；非当前会话的可见输出/BEL 置活动指示，切入后清除、不写入 restore 且不误发系统通知；移动 v1.0 不实现 workspace，未来交付标签分组时再验证其活动聚合；区分桌面 normal-screen xterm 清理/ConPTY 光标同步与移动新增的“清除后重挂载不回放本地缓存”契约；只有确认的零码正常退出自动关闭，非零/timeout/error/unknown 保留；移动自动重连覆盖有限退避、错误分类停止和用户停止。
@@ -205,3 +206,16 @@ Android 可以作为首个日常开发平台，但 iOS Phase 0 不能后置到�
 7. Telnet/Mosh/ET/Serial 不能共享一个模糊的“其他协议”结论：Telnet 自动登录/IAC/字符集和明文风险、Mosh SSH bootstrap/UDP 恢复/自定义 server path、ET 自定义端口与外部 binary 替代、Serial 参数矩阵及双端硬件权限都需要独立 Gate。
 
 在 Phase 0 证据和产品决策齐备前，RN、Expo、具体 SSH/终端组件及时间估算都保持候选状态。
+
+## 9. 上游同步记录
+
+2026-08-18 已将 `upstream/main@c4edefdb` 合并到移动分支，合并前上游相对旧移动基线新增 274 个提交、涉及 429 个文件。与移动路线直接相关的变化已写回 PRD 和 ALIGNMENT:
+
+- Spanish locale 加入桌面正式语言集合；
+- OSC 9/777/99 桌面通知及其清洗、限流和焦点策略；
+- SFTP 常见归档/单文件压缩解压；
+- PuTTY 风格 SSH/Telnet 命令行参数解析；
+- 动态 group path 的 snippet/script targets 与组变更原子提交；
+- SSH transport 复用、SFTP 重连、终端选择/搜索/背压等安全和一致性修正。
+
+后续每次同步上游都应记录新的 `upstream/main` commit，只审计新增 delta，并重新检查移动任务提示词的依赖和验收标准。

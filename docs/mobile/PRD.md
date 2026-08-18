@@ -2,7 +2,7 @@
 
 > 范围: iOS / Android 移动客户端
 > 状态: v0.3 草案，移动端尚未开始开发
-> 基线: `mobile@121ba2cb`，桌面能力处置见 `ALIGNMENT.md`
+> 移动文档基线: `mobile@21a3d084`；桌面代码基线: `upstream/main@c4edefdb`；桌面能力处置见 `ALIGNMENT.md`
 > 原则: 全量能力处置、分阶段交付；“已列入”不等于“已实现”或“技术已验证”
 
 ## 1. 产品定义
@@ -110,10 +110,10 @@ v1.0 至少包含 Vault、Sessions、Settings；v1.1 增加 Files/Transfers；v1
 |---|---|---|
 | 主机 CRUD、复制、删除影响提示 | P0/v1.0 | 支持 hostname、port、username、认证、标签和分组；复制生成新 ID；删除前列出活动会话/规则/身份引用影响 |
 | 搜索、最近、置顶 | P0/v1.0 | 搜索覆盖 label/hostname/tags；桌面近期区按 `lastConnectedAt` 排序、排除置顶项并截取 6 条；移动数量上限由信息架构/性能测试决定且可隐藏该区 |
-| 多级分组、手动顺序和移动 | P0/v1.0 | 新建/重命名/删除/移动后路径与子级一致；v1.0 提供触摸可取消的手动上移/下移或编辑顺序，删除组可选择移动或处理其中主机；A-Z、Z-A、newest、oldest、group 等非手动排序模式与其他视图按下表后置，不把“保留手动顺序”写成“已交付所有排序” |
+| 多级分组、手动顺序和移动 | P0/v1.0 | 新建/重命名/删除/移动后路径与子级一致；v1.0 提供触摸可取消的手动上移/下移或编辑顺序，删除组可选择移动或处理其中主机；组路径变更必须原子更新主机、托管源和 snippets/script targets，失败时回滚；A-Z、Z-A、newest、oldest、group 等非手动排序模式与其他视图按下表后置，不把“保留手动顺序”写成“已交付所有排序” |
 | 主机列表/网格/树与点击行为 | P2/vNext | 桌面对齐三种视图；移动 v1.0 先列表，其他视图不得伪装成已有能力 |
 | 批量连接和批量选择 | P2/vNext | 错峰启动；可取消未开始项；单个失败不阻断其他项 |
-| 快速连接 | P1/v1.1（certificate/Identity v1.2；其他协议执行 vNext） | 对齐桌面 `user@host:port`、括号/裸 IPv6 和有限 `ssh` 命令解析，无法应用的参数逐项警告；v1.1 支持 SSH 的直接 password/key、host key、连接错误与显式保存，certificate 和已保存 Identity 随 v1.2 Keychain/Identity 能力交付。桌面直接自定义认证 UI 也只有 password/key，certificate 只能经已保存 Identity 间接使用。Mosh/ET/Telnet 的选择和协议字段可被解析/保留并显示 unsupported，但连接执行随各协议在 vNext 交付。桌面此入口没有跳板/代理表单，移动若增加属于新增；未保存对象保持 ephemeral，不进入 vault/session restore，显式保存才生成持久主机 |
+| 快速连接 | P1/v1.1（certificate/Identity v1.2；其他协议执行 vNext） | 对齐桌面 `user@host:port`、括号/裸 IPv6、有限 `ssh` 命令参数和 PuTTY 风格命令行参数解析，无法应用的参数逐项警告；v1.1 支持 SSH 的直接 password/key、host key、连接错误与显式保存，certificate 和已保存 Identity 随 v1.2 Keychain/Identity 能力交付。桌面直接自定义认证 UI 也只有 password/key，certificate 只能经已保存 Identity 间接使用。Mosh/ET/Telnet 的选择和协议字段可被解析/保留并显示 unsupported，但连接执行随各协议在 vNext 交付。桌面此入口没有跳板/代理表单，移动若增加属于新增；未保存对象保持 ephemeral，不进入 vault/session restore，显式保存才生成持久主机 |
 | 快速切换器 | P2/vNext | 桌面基线搜索 Hosts、Vault/SFTP tab、workspace/session、本地 shell 和插件 command/view，并可连接/编辑主机或新建 workspace；移动保留主机、会话和核心目的地搜索，workspace/本地 shell 不适用，插件项随插件后置。设置搜索是独立能力，若合并进移动全局搜索须标为移动新增 |
 | 多协议主机与连接选择 | P2/vNext（SSH 数据兼容 v1.0） | 保留默认协议、附加协议、协议专属端口/主题/凭据和未知 plugin provider 配置；v1.0 只执行 SSH，其他协议显示 unsupported/后置但不得被编辑或迁移静默删除。桌面当前只在附加 Telnet 且默认非 Telnet 时强制弹 picker，不假称每个 SSH+Mosh/ET 主机都会询问 |
 | 复制主机地址与账密 | 地址 P0/v1.0；账密 P1/v1.2 | 地址复制只写可连接 hostname，不把 plugin provider label 冒充地址。账密复制先应用分组默认值，再按主协议解析 SSH/Telnet、Identity、IPv6 和非默认端口，输出明确的 host/username/password；无可读密码、凭据占位符、系统剪贴板拒绝或 App 已锁定/进入后台时不得留下半截或旧内容冒充成功。明文密码复制前要求近期设备认证/再次认证，显示系统剪贴板历史与跨设备同步风险，并在平台允许时提供短时过期/清除；系统不允许可靠清除时如实提示，不能承诺撤回其他 App 已读取的内容 |
@@ -251,7 +251,7 @@ P0 必须提供本次连接产生的信任记录查看和删除入口；P1 完�
 
 P0 键盘栏至少提供 Esc、Ctrl、Alt、Tab、方向键和可配置符号页；修饰键支持一次、锁定和取消三种状态并有明确视觉反馈。IME 组合文本只能发送已提交内容；中日韩输入、候选栏、语音输入、外接键盘、硬件 Ctrl/Alt/Meta 和横竖屏都进入真机矩阵。
 
-P1 Compose Bar 支持多行编辑、可调高度、从终端选择内容填入、发送/仅粘贴、搜索和 pin/unpin snippets、固定项顺序与失效引用清理，以及广播目标提示。首次使用可从 Vault snippets 或内建集合播种，之后用户 pins 持久化；删除 snippet 后不能留下不可执行入口。密码提示场景不能把密码留在可恢复草稿或普通剪贴板。
+P1 Compose Bar 支持多行编辑、可调高度、从终端选择内容填入、发送/仅粘贴、搜索和 pin/unpin snippets、固定项顺序与失效引用清理，以及广播目标提示。首次使用可从 Vault snippets 或内建集合播种，之后用户 pins 持久化；删除 snippet 后不能留下不可执行入口。密码提示场景不能把密码留在可恢复草稿或普通剪贴板。桌面当前还支持按 host/group path 动态解析 snippet/script targets；移动端后置实现必须保留路径规范化、重命名迁移和删除组后的安全收缩语义。
 
 ### 5.3 会话管理
 
@@ -259,7 +259,7 @@ P1 Compose Bar 支持多行编辑、可调高度、从终端选择内容填入�
 |---|---|---|
 | 多标签切换、重排、重连、重命名、复制 | P0/v1.0 + 复用 Gate | 连接中不可重复重连；复制使用新 session ID；名称可恢复默认动态标题。顺序可通过长按拖动或编辑排序调整，并提供外接键盘/无障碍上移下移；重排不改变 session ID、连接或当前活动标签。复制/新 shell 在安全上下文完全相同时复用已认证 SSH transport 以避免重复 MFA；host/profile、认证、跳板/代理、keepalive、SUDO 与 agent-forwarding policy 不匹配时必须新连，复用失败可回退且不能跨主机/凭据 |
 | 重连代际与迟到事件隔离 | P0/v1.0 | 同一逻辑 session 的每次连接使用单调 `bootEpoch`/generation 或等价的 opaque owner。旧启动、host-key/MFA 响应、输出、exit、发行版/CWD probe 和 cleanup 不得更新、污染或关闭新连接；旧代际 close 对新 owner 为 no-op，代际不匹配可诊断但不泄露凭据 |
-| 后台输出与 BEL 活动指示 | P0/v1.0 | 非当前会话收到经过控制序列过滤的可见输出或终端 BEL 时显示活动指示，进入对应会话后清除；该状态是瞬时 UI 状态，不进入 session restore，重启后不恢复。桌面 workspace 会聚合子会话活动；移动 v1.0 不实现 workspace，未来若交付标签分组再提供等价聚合。活动点不等于系统通知，系统通知另按移动新增权限、脱敏和重复事件规则实现 |
+| 后台输出与 BEL 活动指示 | P0/v1.0 | 非当前会话收到经过控制序列过滤的可见输出或终端 BEL 时显示活动指示，进入对应会话后清除；该状态是瞬时 UI 状态，不进入 session restore，重启后不恢复。桌面 workspace 会聚合子会话活动；移动 v1.0 不实现 workspace，未来若交付标签分组再提供等价聚合。上游桌面现已解析 OSC 9/777/99 并按 `off/unfocused/always`、标题/正文清洗、长度上限和会话级限流发送系统通知；移动端仍不得把通知替代 activity dot，需另行定义权限、后台、锁屏脱敏和去重规则 |
 | 编辑来源 Vault 主机 | P1/v1.x | 已保存主机发起的会话提供编辑主机入口并保持会话连接不变；ephemeral、local 和没有可解析 Vault 来源的会话不显示该动作，不能把会话快照误保存回 Vault |
 | 关闭当前/其他/右侧/全部 | P1/v1.x | 批量关闭先检查忙碌会话；取消不关闭任何尚未处理项；活动标签选择可预测 |
 | 忙碌确认 | P2/vNext | 能识别已知忙碌进程/前台任务；无法判断时不假称安全 |
@@ -321,6 +321,7 @@ P1 Compose Bar 支持多行编辑、可调高度、从终端选择内容填入�
 | SUDO | P2/vNext | 明确支持矩阵；密码处理与 sudo prompt assist 一致 |
 | 多标签与浏览偏好 | P2/vNext | SFTP 标签新建/复制/关闭/排序、每主机路径/视图记忆、目录优先、`name/modified/size/type` 可见列与列宽、键盘 typeahead；名称列始终可见；桌面的跨左右 pane 移动在单窗格移动端不适用，改为标签排序和显式选择来源/目标标签 |
 | 文件工具栏布局 | P2/vNext | bookmark、终端 CWD 双向定位/跟随、复制路径、视图、过滤、编码、新建、隐藏文件、刷新等动作保留结果；移动以编辑模式实现 order 与 show/collapse/hide，窄屏 overflow 不改写持久偏好，刷新等锁定动作保持可达 |
+| 归档解压 | P1/v1.1 + Gate | 上游桌面支持对常见 `.tar`/`.tar.gz`/`.tar.bz2`/`.tar.xz`/`.tar.zst`/`.zip` 及单文件压缩格式执行安全解压，并按远端工具可用性回退；移动端以长按菜单替代右键，必须限制格式、正确转义路径、使用临时目标/原子替换、显示阶段/取消/失败结果，不得把归档名拼接成任意 shell 命令 |
 | 触屏打开/传输与自动打开文件工具 | P1/v1.1 | 桌面的双击“打开/传输”在触屏上改为单击默认动作 + 长按菜单；连接后自动打开文件工具和队列并发属于同一版本验收，桌面“自动打开侧栏”改称自动打开文件工具，不能因没有侧栏而删除结果 |
 | 浏览与入口偏好持久化 | P1/v1.1（list、隐藏文件、跟随终端 CWD）；P2/vNext（tree 默认视图及其余未交付偏好） | 逐项迁移并显示当前实际生效值；移动端未交付的 tree 或偏好不得伪装成已支持，窄屏 overflow 不得静默改写持久偏好 |
 | 传输调优偏好 | P1/v1.1 + Gate | 压缩上传保留自动回退；“跳过未变化文件”必须说明比较依据和误判风险；共享 SSH transport 的 idle TTL `1/5/15/30 min/never` 属桌面连接池调优，移动端由原生连接所有权/电量 Gate 决定是否暴露等价选项，否则使用有文档的固定策略 |
@@ -457,7 +458,7 @@ Catty 工具域的用户结果与契约基线如下。这里审查的是 in-app 
 
 ### 10.1 设置范围
 
-v1.0 提供主题（明/暗/系统）、语言、凭据保护状态、诊断基础、关于/版本/隐私/反馈；App 锁仍是 P0 候选，只有第 13 节产品决策纳入后才进入 v1.0 设置范围。桌面当前明确支持 `en`、`zh-CN`、`zh-TW`、`ru` 四种 locale；移动 v1.0 保持这四种语言并定义系统 locale fallback，任何暂缺翻译都回退到英文而不是显示 key。桌面的云同步 master-key `NO_KEY/LOCKED/UNLOCKED` 只控制同步操作和 auto-sync，不锁 Vault、终端或整个应用；移动 App 锁必须使用独立状态与生命周期，不能把“同步已解锁”冒充“App 已解锁”。v1.x 增加终端、SFTP、传输、恢复和平台更新设置；vNext 增加设置搜索、自定义 UI/终端主题、iTerm2 导入、文件关联、应用图标变体、诊断导出和清空 vault。应用图标变体在移动端属于平台能力，需要确认 Android launcher alias/iOS alternate icons、系统确认 UI、失败回滚和商店素材，而不是直接复用桌面图标文件。
+v1.0 提供主题（明/暗/系统）、语言、凭据保护状态、诊断基础、关于/版本/隐私/反馈；App 锁仍是 P0 候选，只有第 13 节产品决策纳入后才进入 v1.0 设置范围。桌面当前明确支持 `en`、`es`、`zh-CN`、`zh-TW`、`ru` 五种 locale；移动 v1.0 保持这五种语言并定义系统 locale fallback，任何暂缺翻译都回退到英文而不是显示 key。桌面的云同步 master-key `NO_KEY/LOCKED/UNLOCKED` 只控制同步操作和 auto-sync，不锁 Vault、终端或整个应用；移动 App 锁必须使用独立状态与生命周期，不能把“同步已解锁”冒充“App 已解锁”。v1.x 增加终端、SFTP、传输、恢复和平台更新设置；vNext 增加设置搜索、自定义 UI/终端主题、iTerm2 导入、文件关联、应用图标变体、诊断导出和清空 vault。应用图标变体在移动端属于平台能力，需要确认 Android launcher alias/iOS alternate icons、系统确认 UI、失败回滚和商店素材，而不是直接复用桌面图标文件。
 
 `domain/settingsSearchCatalog.ts` 当前有 116 个可搜索设置入口，它只是稳定的反向审计种子，不是全部设置总数；实际页面还有未被搜索索引的子设置和高级调优项。移动设置 IA 可以合并页面，但这些用户结果必须逐项处置，并继续反查各设置页的 `SettingRow`/嵌套表单:
 
@@ -553,6 +554,19 @@ Android 与 iOS 真机分别验证:
 | vNext | 动态转发、完整 Notes/snippets/scripts、云同步、AI、系统管理器、终端图片/补全、zmodem/ymodem、其他协议、插件研究，以及待决的断开通知、系统分享、App Shortcuts、Widget、健康探测和扫码等移动新增/替代项 |
 
 平台节奏可 Android 先行，但 iOS 不能整体塞进 v2.0 后才做基础可行性；双端 Phase 0 Gate 必须在锁定共享架构和 v1.x 承诺前完成。
+
+## 附录 A：上游桌面基线更新
+
+本轮同步到 `upstream/main@c4edefdb` 后，以下桌面能力发生变化，移动端以本 PRD 的版本和 Gate 处置为准，不把桌面新增自动升级为移动承诺:
+
+| 上游变化 | 移动端影响 |
+|---|---|
+| 新增 `en/es/ru/zh-CN/zh-TW` 五种 UI locale | 移动语言验收矩阵增加 `es`；缺失翻译仍回退英文 |
+| 终端支持 OSC 9/777/99 通知，含 `off/unfocused/always`、文本清洗、长度上限和会话级限流 | 移动系统通知仍是独立新增能力；必须重新定义权限、后台、锁屏脱敏、点击回会话和重复通知抑制 |
+| SFTP 支持常见归档和单文件压缩解压，并有远端工具回退/临时文件保护 | v1.1 长按菜单可纳入，但必须通过路径转义、工具能力、取消、原子替换和安全 Gate |
+| 桌面深链可解析 PuTTY 风格 SSH/Telnet 参数 | Quick Connect/深链 fixture 增加 PuTTY 参数、忽略项警告和 ephemeral 凭据边界 |
+| 分组路径、动态脚本/snippet targets 和组变更提交更加原子化 | 移动迁移、重命名和删除组必须同步更新 host、managed source、script/snippet targets，失败可回滚 |
+| 终端补全、搜索/选择、连接复用和 SFTP 重连安全持续修正 | Phase 0 corpus 与 contract test 使用上游最新行为，不复制已修复的桌面选择或复用缺陷 |
 
 ## 13. 待产品决策
 
