@@ -8,6 +8,7 @@ import { I18nProvider } from "../../application/i18n/I18nProvider.tsx";
 import type { VaultNote } from "../../types.ts";
 import { TooltipProvider } from "../ui/tooltip.tsx";
 import {
+  clampNotesTreeWidth,
   getFallbackNoteSelectionState,
   getNoteActionTargetGroup,
   getNoteGroupSelectionState,
@@ -81,6 +82,36 @@ test("NotesManager balances folder and note tree icon sizes", () => {
 
   assert.match(markup, /width="16" height="16"[^>]*class="lucide lucide-folder/);
   assert.match(markup, /width="16" height="16"[^>]*class="lucide lucide-file-text/);
+});
+
+test("NotesManager tree scroll area constrains width so titles can truncate", () => {
+  const markup = renderNotes();
+
+  // Radix ScrollArea viewport child is display:table by default; force block +
+  // min-w-0 so narrowing the notes sidebar ellipsizes long titles instead of
+  // clipping them. React encodes `&` / `>` in class attributes.
+  assert.match(
+    markup,
+    /data-radix-scroll-area-viewport\](?:&gt;|>)div\]:!block/,
+  );
+  assert.match(
+    markup,
+    /data-radix-scroll-area-viewport\](?:&gt;|>)div\]:!min-w-0/,
+  );
+  assert.match(markup, /data-notes-drop-zone="root"/);
+  assert.match(markup, /min-h-full min-w-0 space-y-1 overflow-hidden/);
+  // Aside stays unclipped so the resize handle's outer half remains hit-testable;
+  // truncation is enforced by the inner tree shell + ScrollArea constraints.
+  assert.match(markup, /aside class="[^"]*min-w-0[^"]*flex-col bg-background/);
+  assert.match(markup, /flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden/);
+  assert.match(markup, /role="separator"/);
+  assert.match(markup, /translate-x-1\/2 cursor-col-resize/);
+});
+
+test("clampNotesTreeWidth keeps the sidebar within the design range", () => {
+  assert.equal(clampNotesTreeWidth(100), 160);
+  assert.equal(clampNotesTreeWidth(300), 300);
+  assert.equal(clampNotesTreeWidth(900), 520);
 });
 
 test("NotesManager selection helpers keep note and folder selection exclusive", () => {

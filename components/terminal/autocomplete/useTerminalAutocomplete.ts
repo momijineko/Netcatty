@@ -149,6 +149,7 @@ interface UseTerminalAutocompleteOptions {
   containerRef: RefObject<HTMLElement | null>;
   sessionId: string;
   hostId: string;
+  hostGroup?: string;
   hostOs: "linux" | "windows" | "macos";
   settings?: Partial<AutocompleteSettings>;
   /** Callback to write text to the terminal session — replaces CustomEvent */
@@ -200,6 +201,7 @@ export function useTerminalAutocomplete(
     containerRef,
     sessionId,
     hostId,
+    hostGroup,
     hostOs,
     settings: userSettings,
     onAcceptText,
@@ -237,6 +239,8 @@ export function useTerminalAutocomplete(
   onAcceptSnippetRef.current = onAcceptSnippet;
   const hostIdRef = useRef(hostId);
   hostIdRef.current = hostId;
+  const hostGroupRef = useRef(hostGroup);
+  hostGroupRef.current = hostGroup;
   const hostOsRef = useRef(hostOs);
   hostOsRef.current = hostOs;
   const sessionIdRef = useRef(sessionId);
@@ -272,6 +276,8 @@ export function useTerminalAutocomplete(
   const completionAbortRef = useRef<AbortController | null>(null);
   /** Last accepted suggestion text — for accurate history recording on fast Enter after accept */
   const lastAcceptedCommandRef = useRef<string | null>(null);
+  /** Deadline for treating the next `.` / `_` as readline Meta after Esc dismissed the popup. */
+  const escMetaPrefixUntilRef = useRef(0);
   /** The user's typed input that produced the current popup suggestions (live-preview baseline). */
   const previewBaselineRef = useRef<string>("");
   /** Whether a popup candidate is currently rendered into the command line (#1005). */
@@ -1048,6 +1054,7 @@ export function useTerminalAutocomplete(
     try {
       completions = await provideCompletionsRef.current(input, {
         hostId: hostIdRef.current,
+        hostGroup: hostGroupRef.current,
         os: hostOsRef.current,
         maxResults: settingsRef.current.maxSuggestions,
         historyScope: settingsRef.current.historyScope,
@@ -1141,6 +1148,7 @@ export function useTerminalAutocomplete(
       typedBufferReliableRef,
       previewActiveRef,
       lastAcceptedCommandRef,
+      escMetaPrefixUntilRef,
       setState,
       expandSubDir,
       writeToTerminal,

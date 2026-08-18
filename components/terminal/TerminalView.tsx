@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { TerminalSelectionAIOverlay } from './TerminalSelectionAIOverlay';
+import { getHistoryPreviewSelectionFromRoot } from './runtime/terminalHistoryScrollOverride';
 
 type TerminalViewContext = Record<string, any>;
 type HostLineTimestampToggle = {
@@ -514,7 +515,11 @@ function TerminalViewInner({ ctx }: { ctx: TerminalViewContext }) {
     >
       <div
         onContextMenu={() => {
-          setContextMenuHasSelection(Boolean(termRef.current?.hasSelection()));
+          const term = termRef.current;
+          setContextMenuHasSelection(Boolean(
+            term?.hasSelection()
+            || getHistoryPreviewSelectionFromRoot(term?.element?.parentElement),
+          ));
         }}
         className={cn(
           "relative h-full w-full flex min-h-0 overflow-hidden",
@@ -993,6 +998,7 @@ function TerminalViewInner({ ctx }: { ctx: TerminalViewContext }) {
             termRef={termRef}
             sessionId={sessionId}
             hostId={host.id}
+            hostGroup={host.group}
             hostOs={autocompleteHostOs}
             settings={autocompleteSettings}
             protocol={effectiveTerminalProtocol ?? resolveEffectiveTerminalProtocol(host)}

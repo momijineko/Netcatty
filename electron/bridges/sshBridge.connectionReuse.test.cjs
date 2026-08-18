@@ -3,17 +3,23 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
 
+const sshConnectionPool = require("./sshConnectionPool.cjs");
 const {
+  createTransport,
+  borrowTransport,
   createConnectionRef,
   acquireConnectionRef,
   releaseConnectionRef,
+  beginTransportDial,
+  completeTransportDial,
+  buildConnectionReuseEndpoint,
   resetSshTransportRegistryForTests,
-} = require("./sshConnectionPool.cjs");
+} = sshConnectionPool;
 
 // Load sshBridge with a mocked ssh2 module so we can observe whether a *new*
 // SSH client is constructed (a fresh connection) versus an existing connection
 // being reused for a new shell channel (issue #1204).
-function loadBridgeWithMockedSsh2(t, { connectReady = false } = {}) {
+function loadBridgeWithMockedSsh2(t, { connectReady = false, remoteVer = "OpenSSH_9.0" } = {}) {
   const bridgePath = require.resolve("./sshBridge.cjs");
   const authHelperPath = require.resolve("./sshAuthHelper.cjs");
   const originalLoad = Module._load;
@@ -27,8 +33,9 @@ function loadBridgeWithMockedSsh2(t, { connectReady = false } = {}) {
         setTimeout() {},
         setNoDelay() {},
       };
-      this._remoteVer = "OpenSSH_9.0";
+      this._remoteVer = remoteVer;
       this.openedShells = [];
+      this.ended = 0;
     }
     connect() {
       clientConstructCount += 1;
@@ -44,7 +51,7 @@ function loadBridgeWithMockedSsh2(t, { connectReady = false } = {}) {
       // test asserts on clientConstructCount and fails clearly.
       setImmediate(() => this.emit("error", new Error("unexpected fresh connect")));
     }
-    end() {}
+    end() { this.ended += 1; }
     destroy() {}
     exec(_command, callback) { callback?.(new Error("exec unavailable")); }
     shell(_pty, _options, callback) {
@@ -61,16 +68,45 @@ function loadBridgeWithMockedSsh2(t, { connectReady = false } = {}) {
         utils: { parseKey: () => new Error("no key") },
       };
     }
+    if (request === "ssh2/lib/agent.js") {
+      return { BaseAgent: class BaseAgent {} };
+    }
+    if (request === "ssh2/lib/protocol/keyParser.js") {
+      return { parseKey: () => new Error("no key") };
+    }
+    if (request === "electron") {
+      return {
+        app: {
+          getPath: (name) => `/tmp/netcatty-test-${name}`,
+          isReady: () => true,
+          getName: () => "netcatty",
+          getVersion: () => "0.0.0",
+        },
+        ipcMain: { handle() {}, on() {}, removeHandler() {} },
+        BrowserWindow: class BrowserWindow {},
+        dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+        shell: { openPath: async () => "" },
+        nativeTheme: { shouldUseDarkColors: false },
+        webContents: { fromId: () => null },
+      };
+    }
     return originalLoad.call(this, request, parent, isMain);
   };
 
+  const extraCached = [
+    require.resolve("./netcattyAgent.cjs"),
+    require.resolve("./zmodemHelper.cjs"),
+    require.resolve("./sshBridge/startSession.cjs"),
+  ];
   delete require.cache[bridgePath];
   delete require.cache[authHelperPath];
+  for (const extra of extraCached) delete require.cache[extra];
   const bridge = require("./sshBridge.cjs");
 
   t.after(() => {
     delete require.cache[bridgePath];
     delete require.cache[authHelperPath];
+    for (const extra of extraCached) delete require.cache[extra];
     Module._load = originalLoad;
   });
 
@@ -188,6 +224,324 @@ test("an ordinary open with reuse disabled bypasses an idle same-host transport"
 
   assert.equal(getClientConstructCount(), 2);
   assert.notEqual(firstTransport.conn, sessions.get("second").conn);
+});
+
+test("TERM-SSHD close does not idle-park, so reconnect dials a fresh connection", async (t) => {
+  resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 });
+  t.after(() => resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 }));
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t, {
+    connectReady: true,
+    remoteVer: "TERM-SSHD",
+  });
+  const sessions = new Map();
+  const start = registerStartHandler(bridge, sessions);
+  const options = {
+    hostname: "blj.yd.com.cn",
+    username: "test",
+    port: 22,
+    authMethod: "password",
+    password: "secret",
+    useSshAgent: false,
+    verifyHostKeys: false,
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "first" });
+  const first = sessions.get("first");
+  const firstTransport = first.connRef;
+  assert.equal(firstTransport.allowIdlePark, false);
+  first.stream.emit("close");
+  assert.equal(firstTransport.state, "dead");
+  assert.equal(first.conn.ended, 1);
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "second" });
+  assert.equal(getClientConstructCount(), 2, "second open must not reuse a TERM-SSHD transport");
+  assert.notEqual(sessions.get("second").conn, first.conn);
+});
+
+test("idle-park reconnect falls back to a fresh dial when the reused shell exits immediately", async (t) => {
+  resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 });
+  t.after(() => resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 }));
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t, {
+    connectReady: true,
+    remoteVer: "CustomBastion_1.0",
+  });
+  const sessions = new Map();
+  const start = registerStartHandler(bridge, sessions);
+  const options = {
+    hostname: "bastion.example",
+    username: "alice",
+    port: 22,
+    authMethod: "password",
+    password: "secret",
+    useSshAgent: false,
+    verifyHostKeys: false,
+    sshReusedShellLivenessMs: 25,
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "first" });
+  const first = sessions.get("first");
+  const parkedConn = first.conn;
+  const firstTransport = first.connRef;
+  first.stream.emit("close");
+  assert.equal(firstTransport.state, "idle", "unknown banners still park until proven broken");
+
+  parkedConn.shell = (_pty, _shellOpts, callback) => {
+    const stream = makeStream();
+    parkedConn.openedShells.push(stream);
+    setImmediate(() => {
+      callback(null, stream);
+      setImmediate(() => {
+        stream.emit("exit", 0);
+        stream.emit("close");
+      });
+    });
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "second" });
+  assert.equal(getClientConstructCount(), 2, "dead parked shell must fall back to a fresh connection");
+  assert.notEqual(sessions.get("second").conn, parkedConn);
+  assert.equal(firstTransport.state, "dead");
+
+  const second = sessions.get("second");
+  const secondTransport = second.connRef;
+  second.stream.emit("close");
+  assert.equal(secondTransport.state, "dead", "endpoint is denylisted so the next close does not park");
+});
+
+test("TERM-SSHD last shell with SFTP still open dials a fresh shell", async (t) => {
+  resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 });
+  t.after(() => resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 }));
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t, {
+    connectReady: true,
+    remoteVer: "TERM-SSHD",
+  });
+  const sessions = new Map();
+  const start = registerStartHandler(bridge, sessions);
+  const options = {
+    hostname: "blj.yd.com.cn",
+    username: "test",
+    port: 22,
+    authMethod: "password",
+    password: "secret",
+    useSshAgent: false,
+    verifyHostKeys: false,
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "first" });
+  const first = sessions.get("first");
+  const firstTransport = first.connRef;
+  acquireConnectionRef({ id: "sftp-holder", __sshLeaseKind: "sftp" }, firstTransport);
+  first.stream.emit("close");
+  assert.equal(firstTransport.state, "live");
+  assert.equal(firstTransport.allowShellReuse, false);
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "second" });
+  assert.equal(getClientConstructCount(), 2);
+  assert.notEqual(sessions.get("second").conn, first.conn);
+});
+
+test("SFTP-held reconnect falls back when the reused shell exits immediately", async (t) => {
+  resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 });
+  t.after(() => resetSshTransportRegistryForTests({ defaultIdleTtlMs: 0 }));
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t, {
+    connectReady: true,
+    remoteVer: "CustomBastion_1.0",
+  });
+  const sessions = new Map();
+  const start = registerStartHandler(bridge, sessions);
+  const options = {
+    hostname: "bastion.example",
+    username: "alice",
+    port: 22,
+    authMethod: "password",
+    password: "secret",
+    useSshAgent: false,
+    verifyHostKeys: false,
+    sshReusedShellLivenessMs: 25,
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "first" });
+  const first = sessions.get("first");
+  const parkedConn = first.conn;
+  const firstTransport = first.connRef;
+  acquireConnectionRef({ id: "sftp-holder", __sshLeaseKind: "sftp" }, firstTransport);
+  first.stream.emit("close");
+  assert.equal(firstTransport.state, "live");
+  assert.ok(firstTransport.pendingShellReconnectRisk);
+
+  parkedConn.shell = (_pty, _shellOpts, callback) => {
+    const stream = makeStream();
+    parkedConn.openedShells.push(stream);
+    setImmediate(() => {
+      callback(null, stream);
+      setImmediate(() => {
+        stream.emit("exit", 0);
+        stream.emit("close");
+      });
+    });
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "second" });
+  assert.equal(getClientConstructCount(), 2);
+  assert.notEqual(sessions.get("second").conn, parkedConn);
+  assert.equal(firstTransport.allowShellReuse, false);
+});
+
+test("idle-park reconnect after last shell closes skips post-open PID discovery", async (t) => {
+  // After the sole interactive shell returns its lease, the next open reuses the
+  // parked transport. Post-open discovery exec has no sibling PIDs to
+  // disambiguate and can tear down bastion sessions (issue #2923).
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t, { connectReady: true });
+  const sessions = new Map();
+  const start = registerStartHandler(bridge, sessions);
+  const options = {
+    hostname: "bastion.qzsec.example",
+    username: "alice",
+    port: 22,
+    authMethod: "password",
+    password: "secret",
+    useSshAgent: false,
+    verifyHostKeys: false,
+    sshChannelOpenRateLimitBackoffMs: 1,
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "first" });
+  const first = sessions.get("first");
+  const parkedConn = first.conn;
+  const firstTransport = first.connRef;
+  first.stream.emit("close");
+  assert.equal(firstTransport.state, "idle");
+
+  let execCalls = 0;
+  parkedConn.exec = (_command, callback) => {
+    execCalls += 1;
+    callback(new Error("idle reconnect must not open discovery exec"));
+  };
+  const shellsBefore = parkedConn.openedShells.length;
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "second" });
+
+  assert.equal(getClientConstructCount(), 1, "second open reuses the parked transport");
+  assert.equal(parkedConn.openedShells.length, shellsBefore + 1);
+  assert.equal(execCalls, 0, "must not open discovery exec after sole-shell reconnect");
+  const second = sessions.get("second");
+  assert.equal(second.blockUntargetedCwdProbe, true);
+  assert.notEqual(second.allowCwdRecovery, true);
+
+  second.pendingCwdRecoveryAfterUserCommand = true;
+  second.stream.emit("data", Buffer.from("command output\r\n"));
+  assert.equal(second.allowCwdRecovery, true);
+
+  // A second ordinary reconnect can arrive while the first risk-marked shell
+  // is still live but unassigned. It must not reopen PID discovery during the
+  // connection path either; both sessions stay fail-closed instead.
+  await start({ sender: makeSender() }, { ...options, sessionId: "third" });
+  const third = sessions.get("third");
+  assert.equal(execCalls, 0);
+  assert.equal(third.blockUntargetedCwdProbe, true);
+  assert.equal(third.parkedReconnectRisk.hasUnknownOldShell, true);
+});
+
+for (const leaseKind of ["sftp", "forward"]) {
+  test(`first shell on a ${leaseKind}-only transport keeps cwd discovery enabled`, async (t) => {
+    const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t);
+    const sessions = new Map();
+    const start = registerStartHandler(bridge, sessions);
+    const options = {
+      hostname: `${leaseKind}-only.example`,
+      username: "alice",
+      port: 22,
+      authMethod: "password",
+      password: "secret",
+      useSshAgent: false,
+      verifyHostKeys: false,
+    };
+    const conn = makeReusableConn();
+    const transport = createTransport({
+      conn,
+      endpoint: buildConnectionReuseEndpoint(options),
+    });
+    borrowTransport(transport, {
+      kind: leaseKind,
+      holder: { id: `${leaseKind}-holder` },
+    });
+
+    await start({ sender: makeSender() }, { ...options, sessionId: "first-shell" });
+
+    assert.equal(getClientConstructCount(), 0);
+    assert.equal(sessions.get("first-shell").connRef, transport);
+    assert.notEqual(sessions.get("first-shell").blockUntargetedCwdProbe, true);
+  });
+}
+
+test("shell joining an SFTP-led initial dial keeps cwd discovery enabled", async (t) => {
+  const originalWaitForTransportDial = sshConnectionPool.waitForTransportDial;
+  let observeJoin;
+  const joinedDial = new Promise((resolve) => { observeJoin = resolve; });
+  sshConnectionPool.waitForTransportDial = (coordination, ...args) => {
+    if (coordination?.role === "join") observeJoin();
+    return originalWaitForTransportDial(coordination, ...args);
+  };
+  t.after(() => { sshConnectionPool.waitForTransportDial = originalWaitForTransportDial; });
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t);
+  const sessions = new Map();
+  const start = registerStartHandler(bridge, sessions);
+  const options = {
+    hostname: "sftp-led.example",
+    username: "alice",
+    port: 22,
+    authMethod: "password",
+    password: "secret",
+    useSshAgent: false,
+    verifyHostKeys: false,
+  };
+  const endpoint = buildConnectionReuseEndpoint(options);
+  const coordination = beginTransportDial(endpoint, { kind: "channel" });
+  const pendingStart = start({ sender: makeSender() }, { ...options, sessionId: "first-shell" });
+  await joinedDial;
+
+  const conn = makeReusableConn();
+  const transport = createTransport({ conn, endpoint });
+  borrowTransport(transport, { kind: "sftp", holder: { id: "sftp-holder" } });
+  completeTransportDial(coordination, transport);
+  await pendingStart;
+
+  assert.equal(getClientConstructCount(), 0);
+  assert.equal(sessions.get("first-shell").connRef, transport);
+  assert.notEqual(sessions.get("first-shell").blockUntargetedCwdProbe, true);
+});
+
+test("last shell close stays protected when an SFTP lease keeps the transport live", async (t) => {
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t, { connectReady: true });
+  const sessions = new Map();
+  const start = registerStartHandler(bridge, sessions);
+  const options = {
+    hostname: "shell-plus-sftp.example",
+    username: "alice",
+    port: 22,
+    authMethod: "password",
+    password: "secret",
+    useSshAgent: false,
+    verifyHostKeys: false,
+  };
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "old-shell" });
+  const oldSession = sessions.get("old-shell");
+  const transport = oldSession.connRef;
+  oldSession.shellPid = "111";
+  acquireConnectionRef({ id: "sftp-holder", __sshLeaseKind: "sftp" }, transport);
+  oldSession.stream.emit("close");
+  assert.equal(transport.state, "live");
+
+  await start({ sender: makeSender() }, { ...options, sessionId: "new-shell" });
+
+  assert.equal(getClientConstructCount(), 1);
+  assert.equal(sessions.get("new-shell").connRef, transport);
+  assert.equal(sessions.get("new-shell").blockUntargetedCwdProbe, true);
+  assert.deepEqual(sessions.get("new-shell").parkedReconnectRisk, {
+    oldShellPids: ["111"],
+    hasUnknownOldShell: false,
+  });
 });
 
 function makeSender() {
@@ -1311,6 +1665,39 @@ test("source closed while reused shell is pending keeps the connection alive", a
   terminalBridge.closeSession({ sender: {} }, { sessionId: "copy" });
   assert.equal(conn.ended, 0);
   assert.equal(connRef.state, "idle");
+});
+
+test("Copy Tab after TERM-SSHD source close falls back to a fresh dial", async (t) => {
+  const { bridge, getClientConstructCount } = loadBridgeWithMockedSsh2(t, {
+    connectReady: true,
+    remoteVer: "TERM-SSHD",
+  });
+  const terminalBridge = require("./terminalBridge.cjs");
+  const sessions = new Map();
+  const conn = makeDeferredShellConn();
+  conn._remoteVer = "TERM-SSHD";
+  const source = makeSourceSession(conn, { hostname: "blj.yd.com.cn", username: "test" });
+  const connRef = source.connRef;
+  sessions.set("source", source);
+  terminalBridge.init({ sessions, electronModule: {} });
+  const start = registerStartHandler(bridge, sessions);
+
+  const startPromise = start(
+    { sender: makeSender() },
+    {
+      sessionId: "copy",
+      hostname: "blj.yd.com.cn",
+      username: "test",
+      sourceSessionId: "source",
+    },
+  );
+  await new Promise((r) => setImmediate(r));
+  terminalBridge.closeSession({ sender: {} }, { sessionId: "source" });
+  assert.equal(connRef.allowShellReuse, false);
+  conn.flushShell();
+  await startPromise;
+  assert.equal(getClientConstructCount(), 1, "must not keep the TERM-SSHD source transport");
+  assert.notEqual(sessions.get("copy").conn, conn);
 });
 
 test("does not reuse when the source endpoint differs from the requested target", async (t) => {

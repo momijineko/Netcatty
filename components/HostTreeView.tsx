@@ -290,7 +290,7 @@ interface HostTreeViewProps {
   onDeleteGroup: (groupPath: string) => void;
   moveHostToGroup: (hostId: string, groupPath: string | null) => void;
   moveGroup: (sourcePath: string, targetParent: string | null) => void;
-  commitInlineGroupRename?: (name: string) => void;
+  commitInlineGroupRename?: (name: string) => boolean | void | Promise<boolean | void>;
   cancelInlineGroupEdit?: () => void;
   managedGroupPaths?: Set<string>;
   onUnmanageGroup?: (groupPath: string) => void;
@@ -330,7 +330,7 @@ interface TreeNodeProps {
   onDeleteGroup: (groupPath: string) => void;
   moveHostToGroup: (hostId: string, groupPath: string | null) => void;
   moveGroup: (sourcePath: string, targetParent: string | null) => void;
-  commitInlineGroupRename?: (name: string) => void;
+  commitInlineGroupRename?: (name: string) => boolean | void | Promise<boolean | void>;
   cancelInlineGroupEdit?: () => void;
   managedGroupPaths?: Set<string>;
   onUnmanageGroup?: (groupPath: string) => void;
@@ -759,7 +759,11 @@ const HostTreeItem: React.FC<HostTreeItemProps> = ({
             : -1}
           onFocus={() => onActiveTreeItemChange(`host:${host.id}`)}
           draggable={!isMultiSelectMode}
-          onDragStart={(e) => e.dataTransfer.setData("host-id", host.id)}
+          onDragStart={(e) => {
+            // copyMove: vault reorder uses move; focus-sidebar append uses copy.
+            e.dataTransfer.effectAllowed = "copyMove";
+            e.dataTransfer.setData("host-id", host.id);
+          }}
           onClick={() => {
             const action = resolveHostActivateAction({
               behavior: normalizedHostClickBehavior,

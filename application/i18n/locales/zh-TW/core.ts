@@ -170,6 +170,10 @@ export const zhTWCoreMessages: Messages = {
 
   // Settings > Session Restore
   'settings.sessionRestore.title': '工作階段恢復',
+  'settings.sessionRestore.startupLanding': '啟動時開啟',
+  'settings.sessionRestore.startupLandingDesc': '當沒有可恢復的工作階段時，選擇啟動後進入主機主頁還是直接開啟本機終端。',
+  'settings.sessionRestore.startupLanding.vault': '主頁（主機）',
+  'settings.sessionRestore.startupLanding.localTerminal': '本機終端',
   'settings.sessionRestore.restorePreviousSession': '恢復上次的標籤頁和工作區',
   'settings.sessionRestore.restorePreviousSessionDesc': '啟動時重新開啟上次的終端標籤頁和工作區佈局。',
   'settings.sessionRestore.restoreTerminalCwd': '恢復終端工作目錄',
@@ -829,6 +833,10 @@ export const zhTWCoreMessages: Messages = {
   'sftp.moveTo.confirm': '移動',
   'sftp.moveTo.pathNotFound': '目錄不存在或無法存取',
   'sftp.context.download': '下載',
+  'sftp.context.extract': '解壓到目前目錄',
+  'sftp.extract.extracting': '正在解壓 {fileName}...',
+  'sftp.extract.success': '已解壓 {fileName}',
+  'sftp.extract.error': '解壓 {fileName} 失敗：{error}',
   'sftp.context.copyToOtherPane': '複製到另一側',
   'sftp.copyToOtherPane.unavailable': '請開啟雙欄 SFTP 檔案管理，並連線目標側後再複製檔案。',
   'sftp.copyCurrentPath': '複製目前路徑',

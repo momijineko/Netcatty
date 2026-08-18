@@ -529,6 +529,7 @@ function createPreloadApi(ctx) {
     const payload = {
       sessionId,
       ...(Number.isFinite(options?.bootEpoch) ? { bootEpoch: Number(options.bootEpoch) } : {}),
+      ...(options?.retainOwnership === true ? { retainOwnership: true } : {}),
     };
     const epochScoped = Number.isFinite(options?.bootEpoch);
     // Unscoped closes keep the historical sync listener teardown so reconnect
@@ -811,10 +812,11 @@ function createPreloadApi(ctx) {
       const result = await ipcRenderer.invoke("netcatty:sftp:open", options);
       return result.sftpId;
     },
-  openSftpForSession: async (sessionId, expectedEndpoint) => {
+  openSftpForSession: async (sessionId, options) => {
     const result = await ipcRenderer.invoke("netcatty:sftp:openForSession", {
+      ...(options || {}),
       sessionId,
-      expectedEndpoint,
+      expectedEndpoint: options,
     });
     return result.sftpId;
   },
@@ -848,8 +850,8 @@ function createPreloadApi(ctx) {
   mkdirSftp: async (sftpId, path, encoding) => {
     return ipcRenderer.invoke("netcatty:sftp:mkdir", { sftpId, path, encoding });
   },
-  deleteSftp: async (sftpId, path, encoding) => {
-    return ipcRenderer.invoke("netcatty:sftp:delete", { sftpId, path, encoding });
+  deleteSftp: async (sftpId, path, encoding, expectedType) => {
+    return ipcRenderer.invoke("netcatty:sftp:delete", { sftpId, path, encoding, expectedType });
   },
   renameSftp: async (sftpId, oldPath, newPath, encoding) => {
     return ipcRenderer.invoke("netcatty:sftp:rename", { sftpId, oldPath, newPath, encoding });
@@ -857,8 +859,14 @@ function createPreloadApi(ctx) {
   statSftp: async (sftpId, path, encoding) => {
     return ipcRenderer.invoke("netcatty:sftp:stat", { sftpId, path, encoding });
   },
+  lstatSftp: async (sftpId, path, encoding) => {
+    return ipcRenderer.invoke("netcatty:sftp:lstat", { sftpId, path, encoding });
+  },
   chmodSftp: async (sftpId, path, mode, encoding) => {
     return ipcRenderer.invoke("netcatty:sftp:chmod", { sftpId, path, mode, encoding });
+  },
+  extractSftpArchive: async (sftpId, path, encoding) => {
+    return ipcRenderer.invoke("netcatty:sftp:extract", { sftpId, path, encoding });
   },
   getSftpHomeDir: async (sftpId, encoding) => {
     return ipcRenderer.invoke("netcatty:sftp:homeDir", { sftpId, encoding });
@@ -876,17 +884,23 @@ function createPreloadApi(ctx) {
   writeLocalFile: async (path, content) => {
     return ipcRenderer.invoke("netcatty:local:write", { path, content });
   },
-  deleteLocalFile: async (path) => {
-    return ipcRenderer.invoke("netcatty:local:delete", { path });
+  deleteLocalFile: async (path, expectedType) => {
+    return ipcRenderer.invoke("netcatty:local:delete", { path, expectedType });
   },
   renameLocalFile: async (oldPath, newPath) => {
     return ipcRenderer.invoke("netcatty:local:rename", { oldPath, newPath });
+  },
+  extractLocalArchive: async (path) => {
+    return ipcRenderer.invoke("netcatty:local:extract", { path });
   },
   mkdirLocal: async (path) => {
     return ipcRenderer.invoke("netcatty:local:mkdir", { path });
   },
   statLocal: async (path) => {
     return ipcRenderer.invoke("netcatty:local:stat", { path });
+  },
+  lstatLocal: async (path) => {
+    return ipcRenderer.invoke("netcatty:local:lstat", { path });
   },
   listLocalTree: async (path, options = {}) => {
     const onProgress = typeof options?.onProgress === "function" ? options.onProgress : null;
@@ -1065,6 +1079,10 @@ function createPreloadApi(ctx) {
   windowIsMaximized: () => ipcRenderer.invoke("netcatty:window:isMaximized"),
   windowIsFullscreen: () => ipcRenderer.invoke("netcatty:window:isFullscreen"),
   windowFocus: () => ipcRenderer.invoke("netcatty:window:focus"),
+  setTerminalKeyboardFocus: (focused) => ipcRenderer.send(
+    "netcatty:window:set-terminal-keyboard-focus",
+    { focused: focused === true },
+  ),
   setWindowTitle: (title) => ipcRenderer.invoke("netcatty:window:setTitle", title),
   openSessionInNewWindow: (payload) => ipcRenderer.invoke("netcatty:window:openSession", payload),
   onOpenSessionInNewWindow: (cb) => {
@@ -1192,6 +1210,11 @@ function createPreloadApi(ctx) {
     const handler = (_event, payload) => callback(payload);
     ipcRenderer.on("netcatty:openTerminalPath", handler);
     return () => ipcRenderer.removeListener("netcatty:openTerminalPath", handler);
+  },
+  onColdStartIntentsSettled: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("netcatty:startup:coldStartIntentsSettled", handler);
+    return () => ipcRenderer.removeListener("netcatty:startup:coldStartIntentsSettled", handler);
   },
   setSshDeepLinkEnabled: (enabled) =>
     ipcRenderer.invoke("netcatty:deepLink:ssh:setEnabled", { enabled }),
@@ -1575,6 +1598,10 @@ function createPreloadApi(ctx) {
     return { success: true };
   },
 
+  showSystemNotification: async (payload) => {
+    return ipcRenderer.invoke("netcatty:notification:show", payload ?? {});
+  },
+
   // Clipboard fallback helpers
   readClipboardText: async () => {
     return ipcRenderer.invoke("netcatty:clipboard:readText");
@@ -1715,6 +1742,9 @@ function createPreloadApi(ctx) {
   // MCP Server session metadata
   aiMcpUpdateSessions: async (sessions, chatSessionId) => {
     return ipcRenderer.invoke("netcatty:ai:mcp:update-sessions", { sessions, chatSessionId });
+  },
+  aiMcpUpdateLiveSessions: async (sessions) => {
+    return ipcRenderer.invoke("netcatty:ai:mcp:update-live-sessions", { sessions });
   },
   aiMcpMergeSessions: async (sessions, chatSessionId) => {
     return ipcRenderer.invoke("netcatty:ai:mcp:merge-sessions", { sessions, chatSessionId });

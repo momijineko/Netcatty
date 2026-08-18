@@ -72,8 +72,10 @@ const {
   applyJmsProtocolClientPreference,
   applySshProtocolClientPreference,
   collectJmsDeepLinkUrls,
+  collectPuttyStyleDeepLinkUrls,
   collectSshDeepLinkUrls,
   collectTelnetDeepLinkUrls,
+  redactPuttyCommandLinePasswords,
   isJmsDeepLinkUrl,
   isSshDeepLinkUrl,
   isTelnetDeepLinkUrl,
@@ -580,8 +582,18 @@ async function createAndShowMainWindow() {
 }
 
 let sshDeepLinkEnabled = readSshDeepLinkEnabledPreference({ app });
-const pendingSshDeepLinkUrls = sshDeepLinkEnabled ? collectSshDeepLinkUrls(process.argv) : [];
-const pendingTelnetDeepLinkUrls = sshDeepLinkEnabled ? collectTelnetDeepLinkUrls(process.argv) : [];
+const puttyStyleDeepLinks = sshDeepLinkEnabled
+  ? collectPuttyStyleDeepLinkUrls(process.argv)
+  : { ssh: [], telnet: [] };
+const pendingSshDeepLinkUrls = sshDeepLinkEnabled
+  ? [...collectSshDeepLinkUrls(process.argv), ...puttyStyleDeepLinks.ssh]
+  : [];
+const pendingTelnetDeepLinkUrls = sshDeepLinkEnabled
+  ? [...collectTelnetDeepLinkUrls(process.argv), ...puttyStyleDeepLinks.telnet]
+  : [];
+if (sshDeepLinkEnabled) {
+  redactPuttyCommandLinePasswords(process.argv);
+}
 const pendingOpenTerminalPaths = resolveOpenTerminalPathsFromArgs(process.argv);
 let flushingSshDeepLinks = false;
 let flushingTelnetDeepLinks = false;
@@ -893,6 +905,43 @@ async function flushPendingOpenTerminalPaths() {
   }
 }
 
+function hasPendingColdStartLaunchIntents() {
+  return (
+    flushingSshDeepLinks
+    || flushingTelnetDeepLinks
+    || flushingJmsDeepLinks
+    || flushingOpenTerminalPaths
+    || pendingSshDeepLinkUrls.length > 0
+    || pendingTelnetDeepLinkUrls.length > 0
+    || pendingJmsDeepLinkUrls.length > 0
+    || pendingOpenTerminalPaths.length > 0
+  );
+}
+
+async function drainColdStartLaunchIntents() {
+  // Re-entrant void flushes from finally blocks must finish before we notify
+  // the renderer; otherwise landing can race a still-queued startup intent.
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    await Promise.all([
+      flushPendingSshDeepLinks(),
+      flushPendingTelnetDeepLinks(),
+      flushPendingJmsDeepLinks(),
+      flushPendingOpenTerminalPaths(),
+    ]);
+    if (!hasPendingColdStartLaunchIntents()) return;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+function notifyColdStartIntentsSettled(win) {
+  try {
+    if (!win || win.isDestroyed?.()) return;
+    win.webContents?.send?.("netcatty:startup:coldStartIntentsSettled");
+  } catch (err) {
+    console.warn("[Main] Failed to notify cold-start intents settled:", err);
+  }
+}
+
 function hasUsableWindow() {
   try {
     const windowManager = getWindowManager();
@@ -945,8 +994,18 @@ if (!gotLock) {
 
   app.on("second-instance", (_event, argv, workingDirectory) => {
     const jmsDeepLinkUrls = collectJmsDeepLinkUrls(argv);
-    const telnetDeepLinkUrls = collectTelnetDeepLinkUrls(argv);
-    const sshDeepLinkUrls = collectSshDeepLinkUrls(argv);
+    const puttyStyleDeepLinks = collectPuttyStyleDeepLinkUrls(argv);
+    const telnetDeepLinkUrls = [
+      ...collectTelnetDeepLinkUrls(argv),
+      ...puttyStyleDeepLinks.telnet,
+    ];
+    const sshDeepLinkUrls = [
+      ...collectSshDeepLinkUrls(argv),
+      ...puttyStyleDeepLinks.ssh,
+    ];
+    if (jmsDeepLinkUrls.length > 0 || sshDeepLinkUrls.length > 0 || telnetDeepLinkUrls.length > 0) {
+      redactPuttyCommandLinePasswords(argv);
+    }
     if (jmsDeepLinkUrls.length > 0) {
       if (jmsDeepLinkEnabled) {
         jmsDeepLinkUrls.forEach(queueJmsDeepLink);
@@ -1135,11 +1194,21 @@ if (!gotLock) {
     });
 
     // Create the main window
-    void createAndShowMainWindow().then(() => {
-      void flushPendingSshDeepLinks();
-      void flushPendingTelnetDeepLinks();
-      void flushPendingJmsDeepLinks();
-      void flushPendingOpenTerminalPaths();
+    void createAndShowMainWindow().then(async (win) => {
+      // Empty cold-start queues would otherwise notify immediately (before the
+      // renderer subscribes). Wait for ready, then drain, then settle.
+      try {
+        await getWindowManager().waitForRendererReady(win, {
+          timeoutMs: isDev ? 30000 : 15000,
+        });
+      } catch (err) {
+        console.warn(
+          "[Main] Renderer ready signal was late or missing before cold-start settle:",
+          err?.message || err,
+        );
+      }
+      await drainColdStartLaunchIntents();
+      notifyColdStartIntentsSettled(win);
 
       // Trigger auto-update check 5 s after window creation.
       // startAutoCheck() is a no-op on unsupported platforms (for example Linux

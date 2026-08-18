@@ -56,6 +56,12 @@ const LazyAIChatSidePanel = lazy(() =>
   import('../AIChatSidePanel').then((module) => ({ default: module.AIChatSidePanel })),
 );
 
+if (typeof requestIdleCallback === 'function') {
+  requestIdleCallback(() => {
+    void import('../AIChatSidePanel');
+  });
+}
+
 const AIChatSidePanelFallback = memo(function AIChatSidePanelFallback() {
   return (
     <div className="netcatty-lazy-fade-in h-full min-h-0 bg-background" aria-hidden="true" />
@@ -671,6 +677,7 @@ export interface TerminalLayerProps {
   onCreateWorkspaceFromSessions: (baseSessionId: string, joiningSessionId: string, hint: Exclude<SplitHint, null>) => void;
   onAddSessionToWorkspace: (workspaceId: string, sessionId: string, hint: Exclude<SplitHint, null>) => void;
   onRequestAddToWorkspace?: (workspaceId: string) => void;
+  onAppendHostToWorkspace?: (workspaceId: string, hostId: string) => void;
   onUpdateSplitSizes: (workspaceId: string, splitId: string, sizes: number[]) => void;
   onSetDraggingSessionId: (id: string | null) => void;
   onToggleWorkspaceViewMode?: (workspaceId: string) => void;

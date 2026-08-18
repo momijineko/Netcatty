@@ -62,6 +62,31 @@ test('expanded composer grows the text area while keeping controls at the bottom
   assert.doesNotMatch(source, /setExpanded/);
 });
 
+test('parked composer closes body-portaled menus', () => {
+  const source = readFileSync(new URL('./ChatInput.tsx', import.meta.url), 'utf8');
+  assert.match(source, /parked = false/);
+  assert.match(source, /if \(parked\) closeAllMenus\(\)/);
+  assert.match(source, /becameParked/);
+});
+
+test('first keystrokes stay local so IME and Chromium spellcheck cannot stall the composer', () => {
+  const source = readFileSync(new URL('./ChatInput.tsx', import.meta.url), 'utf8');
+  assert.match(source, /spellCheck=\{false\}/);
+  assert.match(source, /autoCorrect="off"/);
+  assert.match(source, /autoCapitalize="off"/);
+  assert.match(source, /nativeEvent\.isComposing/);
+  assert.match(source, /onCompositionEnd=/);
+  assert.match(source, /onBlur=\{\(\) => commitComposerText\(readComposerText\(\)\)\}/);
+  assert.match(source, /onChangeRef\.current\(textareaRef\.current\?\.value \?\? composerTextRef\.current\)/);
+  assert.doesNotMatch(source, /onSend\(\);\s*commitComposerText\(''\);/);
+  assert.match(source, /defaultValue=\{value\}/);
+  assert.match(source, /field-sizing-fixed/);
+  assert.doesNotMatch(source, /value=\{composerText\}/);
+  assert.match(source, /createComposerHasTextStore/);
+  assert.match(source, /ComposerSendUi/);
+  assert.match(source, /chatInputPropsAreEqual/);
+});
+
 test('composer resizing also ends when pointer capture is unexpectedly lost', () => {
   const source = readFileSync(new URL('./ChatInput.tsx', import.meta.url), 'utf8');
 
@@ -190,6 +215,11 @@ test('renders the Catty context usage ring after the model chip', () => {
   assert.match(html, /class="h-4 w-4"/);
   assert.doesNotMatch(html, /text-\[7px\]/);
   assert.match(html, /aria-valuenow="50"/);
+});
+
+test('slash picker system commands clear the local composer', () => {
+  const source = readFileSync(new URL('./ChatInput.tsx', import.meta.url), 'utf8');
+  assert.match(source, /if \(command === 'stop'\) onStop\?\.\(\);\s*commitComposerText\(''\);/s);
 });
 
 test('ChatInput wires /compact through getSystemSlashCommand and canCompact', () => {

@@ -681,6 +681,9 @@ export const ruTerminalMessages: Messages = {
   'snippets.field.variableDefault': 'по умолчанию {value}',
   'snippets.targets.title': 'Цели',
   'snippets.targets.add': 'Добавить цели',
+  'snippets.targets.selectHosts': 'Хосты',
+  'snippets.targets.selectGroups': 'Группы',
+  'snippets.targets.noGroups': 'Группы не найдены',
   'snippets.history.title': 'История оболочки',
   'snippets.history.subtitle': '{count} команд',
   'snippets.history.emptyTitle': 'История оболочки пока пуста',
@@ -762,7 +765,7 @@ export const ruTerminalMessages: Messages = {
   'snippets.shortkey.recording': 'Нажмите сочетание клавиш...',
   'snippets.shortkey.hint': 'Нажмите это сочетание в терминале, чтобы быстро отправить команду.',
   'snippets.shortkey.clear': 'Очистить сочетание',
-  'snippets.shortkey.error.systemConflict': 'Это сочетание конфликтует с системным сочетанием',
+  'snippets.shortkey.error.systemConflict': 'Это сочетание конфликтует с «{name}»',
   'snippets.shortkey.error.snippetConflict': 'Это сочетание уже используется сниппетом: {name}',
 
   // Serial Port

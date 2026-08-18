@@ -100,10 +100,15 @@ type NotesToolbarPanel = "search" | null;
 const toolbarIconButtonClass = "netcatty-tab h-6 w-6 shrink-0 rounded-md p-0 hover:bg-transparent";
 const menuItemClass = "flex h-8 w-full items-center rounded-md px-3 text-left text-sm hover:bg-secondary";
 const NOTES_TREE_DEFAULT_WIDTH = 300;
-const NOTES_TREE_MIN_WIDTH = 220;
+/** Narrow enough for nested folders + ellipsis; toolbar scrolls if needed. */
+const NOTES_TREE_MIN_WIDTH = 160;
 const NOTES_TREE_MAX_WIDTH = 520;
 const NOTE_DRAG_TYPE = "application/x-netcatty-note-id";
 const NOTE_GROUP_DRAG_TYPE = "application/x-netcatty-note-group-path";
+
+export function clampNotesTreeWidth(value: number): number {
+  return Math.max(NOTES_TREE_MIN_WIDTH, Math.min(NOTES_TREE_MAX_WIDTH, value));
+}
 
 export const normalizeNoteEditorMode = (value: string | null): NoteEditorMode | null =>
   value === "edit" || value === "preview" ? value : null;
@@ -388,6 +393,9 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
     NOTES_TREE_DEFAULT_WIDTH,
     { min: NOTES_TREE_MIN_WIDTH, max: NOTES_TREE_MAX_WIDTH },
   );
+  const treeAsideRef = useRef<HTMLElement | null>(null);
+  const treeWidthRef = useRef(treeWidth);
+  treeWidthRef.current = treeWidth;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const importFileInputRef = useRef<HTMLInputElement>(null);
   const isImportingMarkdownRef = useRef(false);
@@ -1232,7 +1240,7 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
     return (
       <div
         key={`new-folder-${parent || "root"}`}
-        className="flex h-7 items-center px-2 text-sm"
+        className="flex h-7 min-w-0 items-center px-2 text-sm"
         style={{ paddingLeft: depth * 16 + 4 }}
       >
         <div className="mr-1 h-5 w-4 shrink-0" />
@@ -1444,23 +1452,53 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
     event.stopPropagation();
 
     const startX = event.clientX;
-    const startWidth = treeWidth;
+    const startWidth = treeWidthRef.current;
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
+    const aside = treeAsideRef.current;
+    let frame = 0;
+    let latestWidth = startWidth;
 
+    // Avoid setState on every pointermove — NotesManager owns the MDX editor and
+    // re-rendering it per pixel makes sidebar resize feel stuck.
     setIsTreeResizing(true);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+    if (aside) {
+      aside.style.willChange = "width";
+    }
 
-    const clampWidth = (value: number) =>
-      Math.max(NOTES_TREE_MIN_WIDTH, Math.min(NOTES_TREE_MAX_WIDTH, value));
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      setTreeWidth(clampWidth(startWidth + moveEvent.clientX - startX));
+    const applyWidth = (width: number) => {
+      latestWidth = width;
+      if (aside) {
+        aside.style.width = `${width}px`;
+      }
     };
 
-    const handlePointerUp = (upEvent: PointerEvent) => {
-      const nextWidth = clampWidth(startWidth + upEvent.clientX - startX);
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = clampNotesTreeWidth(startWidth + moveEvent.clientX - startX);
+      if (frame) {
+        latestWidth = nextWidth;
+        return;
+      }
+      latestWidth = nextWidth;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        applyWidth(latestWidth);
+      });
+    };
+
+    const handlePointerUp = () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      const nextWidth = clampNotesTreeWidth(latestWidth);
+      applyWidth(nextWidth);
+      if (aside) {
+        aside.style.willChange = "";
+      }
+      treeWidthRef.current = nextWidth;
       setTreeWidth(nextWidth);
       persistTreeWidth(nextWidth);
       setIsTreeResizing(false);
@@ -1474,7 +1512,7 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("pointercancel", handlePointerUp);
-  }, [persistTreeWidth, setTreeWidth, treeWidth]);
+  }, [persistTreeWidth, setTreeWidth]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
@@ -1491,16 +1529,20 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
       <div className="flex min-h-0 flex-1">
         {shouldShowNotesTree && (
           <aside
+            ref={treeAsideRef}
             className={cn(
-              "relative flex flex-col bg-background",
-              isSidebarMode ? "min-w-0 flex-1" : "shrink-0 border-r border-border/60",
+              // min-w-0 on the aside; overflow-hidden stays on the inner tree shell
+              // so the resize separator's translate-x-1/2 hit area is not clipped.
+              "relative flex min-w-0 flex-col bg-background",
+              isSidebarMode ? "flex-1" : "shrink-0 border-r border-border/60",
             )}
             style={isSidebarMode ? undefined : { width: treeWidth }}
           >
-          <div className="flex-shrink-0">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="min-w-0 flex-shrink-0 overflow-hidden">
             <div className={cn(
               TERMINAL_SIDE_PANEL_INNER_HEADER_CLASS,
-              "flex items-center gap-1 border-b border-border/60 px-1.5",
+              "flex min-w-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             )}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1645,9 +1687,13 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
               </div>
             </div>
           </div>
-          <ScrollArea className="flex-1">
+          {/* Radix ScrollArea viewport child defaults to display:table, which
+              expands to content width and blocks title ellipsis on narrow trees.
+              Force block + min-w-0 so rows shrink with the sidebar (same pattern
+              as AsidePanelContent). */}
+          <ScrollArea className="min-w-0 flex-1 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
             <div
-              className="min-h-full space-y-1 px-1.5 pt-1.5 pb-4"
+              className="min-h-full min-w-0 space-y-1 overflow-hidden px-1.5 pt-1.5 pb-4"
               data-notes-drop-zone="root"
               onDragOver={(event) => {
                 if (!hasNotesTreeDrag(event.dataTransfer)) return;
@@ -1667,6 +1713,7 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
               )}
             </div>
           </ScrollArea>
+          </div>
           {!isSidebarMode && (
             <div
               role="separator"
@@ -1685,7 +1732,14 @@ export const NotesManager: React.FC<NotesManagerProps> = ({
         )}
 
         {!isSidebarMode && (
-        <main className="flex min-w-0 flex-1 flex-col bg-background">
+        <main
+          className={cn(
+            "flex min-w-0 flex-1 flex-col bg-background",
+            // Keep the editor out of hit-testing / paint thrash while the tree
+            // width is driven from the DOM during resize.
+            isTreeResizing && "pointer-events-none",
+          )}
+        >
           {selectedNoteView ? (
             <>
               <div className="flex min-h-[54px] shrink-0 items-center gap-3 px-8 pt-6 pb-1" data-note-title-row>

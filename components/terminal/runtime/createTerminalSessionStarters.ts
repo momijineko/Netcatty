@@ -51,6 +51,10 @@ import {
   hasUsableProxyConfig,
   resolveProxyConfigAuth,
 } from "../../../domain/proxyProfiles";
+import {
+  advanceMonotonicConnectionProgress,
+  resolveHopConnectionProgress,
+} from "../connectionProgress";
 import { hasConnectionPassedTcpDial } from "../connectionTimeouts";
 import { resolveHostSshConnectionTimeouts } from "../../../domain/sshConnectionTimeouts";
 import { isPluginHostProtocol, sanitizePluginConnection } from "../../../domain/pluginConnection";
@@ -540,8 +544,8 @@ export const createTerminalSessionStarters = (ctx: TerminalSessionStartersContex
         }
 
         ctx.setProgressLogs((prev) => [...prev, logLine]);
-        const hopProgress = (hop / total) * 80 + 10;
-        ctx.setProgressValue(Math.min(95, hopProgress));
+        const hopProgress = resolveHopConnectionProgress(hop, total);
+        ctx.setProgressValue((prev) => advanceMonotonicConnectionProgress(prev, hopProgress));
       });
       if (unsub) unsubscribeChainProgress = unsub;
     }
@@ -1797,7 +1801,7 @@ export const createTerminalSessionStarters = (ctx: TerminalSessionStartersContex
         { replayBacklog: true },
       );
 
-      ctx.disposeExitRef.current = ctx.terminalBackend.onSessionExit(id, (evt) => {
+      ctx.disposeExitRef.current = ctx.terminalBackend.onSessionExit(id, async (evt) => {
         ctx.updateStatus("disconnected");
         const exitMessage = `\r\n[session closed${evt?.exitCode !== undefined ? ` (code ${evt.exitCode})` : ""}]`;
         writeTerminalLine(ctx, term, exitMessage);
@@ -1810,6 +1814,7 @@ export const createTerminalSessionStarters = (ctx: TerminalSessionStartersContex
 
         if (ctx.onTerminalDataCapture && ctx.serializeAddonRef.current) {
           try {
+            await ctx.prepareKeywordHighlightSerialization?.();
             const terminalData = ctx.serializeAddonRef.current.serialize();
             logger.info("[Terminal] Serialized terminal data", {
               sessionId: ctx.sessionId,

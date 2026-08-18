@@ -5,10 +5,12 @@ import { DEFAULT_KEY_BINDINGS } from "../../../domain/models/keyBindings.ts";
 import { HOST_ICON_COLORS, HOST_ICON_IDS } from "../../../domain/hostIcon.ts";
 import zhCN from "./zh-CN.ts";
 import ru from "./ru.ts";
+import es from "./es.ts";
 
 const LOCALIZED_SETTINGS_LOCALES = [
   { name: "zh-CN", messages: zhCN },
   { name: "ru", messages: ru },
+  { name: "es", messages: es },
 ];
 
 test("localized settings include names for every default shortcut", () => {
@@ -56,6 +58,21 @@ test("localized settings include network proxy labels", () => {
   for (const locale of LOCALIZED_SETTINGS_LOCALES) {
     const missing = keys.filter((key) => !locale.messages[key]);
     assert.deepEqual(missing, [], `${locale.name} is missing network proxy labels`);
+  }
+});
+
+test("localized settings include OSC desktop notification labels", () => {
+  const keys = [
+    "settings.terminal.behavior.oscNotifications",
+    "settings.terminal.behavior.oscNotifications.desc",
+    "settings.terminal.behavior.oscNotifications.off",
+    "settings.terminal.behavior.oscNotifications.unfocused",
+    "settings.terminal.behavior.oscNotifications.always",
+  ];
+
+  for (const locale of LOCALIZED_SETTINGS_LOCALES) {
+    const missing = keys.filter((key) => !locale.messages[key]);
+    assert.deepEqual(missing, [], `${locale.name} is missing OSC notification labels`);
   }
 });
 

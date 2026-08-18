@@ -18,6 +18,7 @@ import {
 import { getNotesSnapshot } from '../state/notesStore';
 import { useVaultAgentBridge } from '../state/useVaultAgentBridge';
 import { useWindowControls } from '../state/useWindowControls';
+import { useTerminalKeyboardFocus } from '../state/useTerminalKeyboardFocus';
 import { useEditorTabChromeList } from '../state/editorTabStore';
 import {
   isPluginViewTabId,
@@ -71,6 +72,7 @@ import { useExternalMcpSessionSync } from '../state/useExternalMcpSessionSync';
 import {
   STORAGE_KEY_DEBUG_HOTKEYS,
   STORAGE_KEY_PORT_FORWARDING,
+  STORAGE_KEY_STARTUP_LANDING,
 } from '../../infrastructure/config/storageKeys';
 import { getEffectiveKnownHosts } from '../../infrastructure/syncHelpers';
 import { toast } from '../../components/ui/toast';
@@ -78,11 +80,12 @@ import { VaultSection } from '../../components/VaultView';
 import { KeyboardInteractiveRequest } from '../../components/KeyboardInteractiveModal';
 import { PassphraseRequest } from '../../components/PassphraseModal';
 import { classifyLocalShellType } from '../../lib/localShell';
-import { useDiscoveredShells, resolveShellSetting } from '../../lib/useDiscoveredShells';
+import { useDiscoveredShells, resolveShellSetting, ensureDiscoveredShells } from '../../lib/useDiscoveredShells';
 import { Host, HostProtocol, KnownHost, SerialConfig, Snippet, SSHKey, TerminalSession } from '../../types';
 import { resolveSnippetCommand } from '../../components/SnippetExecutionProvider';
 import { isScriptSnippet } from '../../domain/snippetScript.ts';
 import { collectSnippetDeleteIds } from '../../domain/snippetSelection.ts';
+import { shouldOpenLocalTerminalOnStartup, resolveStartupLandingSetting } from '../../domain/startupLanding';
 import { useAppStartupEffects } from './useAppStartupEffects';
 import { handleTrayJumpToSessionImpl, handleTrayTogglePortForwardImpl, handleTrayPanelConnectImpl, handleTrayPanelConnectRequestImpl, flushQueuedTrayPanelConnectHostsImpl, handleGlobalHotkeyKeyDownImpl, handleEscapeKeyDownImpl, handleKeyboardInteractiveSubmitImpl, handleKeyboardInteractiveCancelImpl, handlePassphraseSubmitImpl, handlePassphraseCancelImpl, handlePassphraseSkipImpl, createLocalTerminalWithCurrentShellImpl, splitSessionWithCurrentShellImpl, copySessionWithCurrentShellImpl, copyWorkspaceWithCurrentShellImpl, copySessionToNewWindowWithCurrentShellImpl, confirmIfBusyLocalTerminalImpl, closeTabsBatchImpl, executeHotkeyActionImpl, handleCreateLocalTerminalImpl, handleConnectToHostImpl, handleTerminalDataCaptureImpl, hasMultipleProtocolsImpl, handleHostConnectWithProtocolCheckImpl, handleProtocolSelectImpl, handleRootContextMenuImpl } from './AppHandlers';
 
@@ -132,11 +135,14 @@ export function AppSideEffects() {
     terminalSettings,
     hotkeyScheme,
     keyBindings,
+    disableTerminalFontZoom,
     isHotkeyRecording,
     showSftpTab,
     shellOnlyTabNumberShortcuts,
     workspaceFocusStyle,
   } = settings;
+
+  useTerminalKeyboardFocus(hotkeyScheme !== 'disabled' && !disableTerminalFontZoom);
 
   const discoveredShells = useDiscoveredShells();
 
@@ -196,6 +202,7 @@ export function AppSideEffects() {
     readPersistedHosts,
     groupConfigs,
     updateGroupConfigs,
+    commitVaultGroupMutation,
   } = vaultState;
 
   const hostsRef = useRef(hosts);
@@ -1172,6 +1179,100 @@ export function AppSideEffects() {
     );
   }, [addConnectionLog, createLocalTerminal, terminalSettings, discoveredShells]);
 
+  // Cold-start landing: open a local terminal once when preferred and nothing
+  // was restored. Wait for queued launch intents (deep links / Explorer open)
+  // and shell discovery so we neither duplicate tabs nor mislabel WSL/Git Bash.
+  const startupLocalTerminalAttemptedRef = useRef(false);
+  const startupLaunchIntentReceivedRef = useRef(false);
+  const sessionsLengthRef = useRef(sessions.length);
+  const workspacesLengthRef = useRef(workspaces.length);
+  sessionsLengthRef.current = sessions.length;
+  workspacesLengthRef.current = workspaces.length;
+  const [coldStartIntentsSettled, setColdStartIntentsSettled] = useState(false);
+
+  useEffect(() => {
+    if (isPeerSessionWindow) {
+      setColdStartIntentsSettled(true);
+      return;
+    }
+    const bridge = netcattyBridge.get();
+    if (!bridge?.onColdStartIntentsSettled) {
+      setColdStartIntentsSettled(true);
+      return;
+    }
+    return bridge.onColdStartIntentsSettled(() => {
+      setColdStartIntentsSettled(true);
+    });
+  }, [isPeerSessionWindow]);
+
+  useEffect(() => {
+    if (startupLocalTerminalAttemptedRef.current) return;
+    if (isPeerSessionWindow) {
+      startupLocalTerminalAttemptedRef.current = true;
+      return;
+    }
+
+    const landing = resolveStartupLandingSetting(
+      localStorageAdapter.readString(STORAGE_KEY_STARTUP_LANDING),
+    );
+    if (landing !== 'local-terminal') {
+      startupLocalTerminalAttemptedRef.current = true;
+      return;
+    }
+    if (sessions.length > 0 || workspaces.length > 0) {
+      startupLocalTerminalAttemptedRef.current = true;
+      return;
+    }
+    if (!coldStartIntentsSettled) return;
+
+    let cancelled = false;
+    void (async () => {
+      const shells = await ensureDiscoveredShells();
+      if (cancelled || startupLocalTerminalAttemptedRef.current) return;
+
+      if (!shouldOpenLocalTerminalOnStartup({
+        startupLanding: landing,
+        hasRestoredSessionState:
+          sessionsLengthRef.current > 0 || workspacesLengthRef.current > 0,
+        isPeerSessionWindow: false,
+        hasQueuedStartupIntent: startupLaunchIntentReceivedRef.current,
+      })) {
+        startupLocalTerminalAttemptedRef.current = true;
+        return;
+      }
+
+      const resolved = resolveShellSetting(
+        terminalSettings.localShell,
+        shells,
+        terminalSettings.localShellArgs,
+      );
+      const matchedShell = shells.find((shell) => shell.id === terminalSettings.localShell);
+      startupLocalTerminalAttemptedRef.current = true;
+      handleCreateLocalTerminal(
+        resolved
+          ? {
+              command: resolved.command,
+              args: resolved.args,
+              name: matchedShell?.name,
+              icon: matchedShell?.icon,
+            }
+          : undefined,
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    coldStartIntentsSettled,
+    handleCreateLocalTerminal,
+    isPeerSessionWindow,
+    sessions.length,
+    terminalSettings.localShell,
+    terminalSettings.localShellArgs,
+    workspaces.length,
+  ]);
+
   const proxyProfileIdSet = useMemo(
     () => new Set(proxyProfiles.map((profile) => profile.id)),
     [proxyProfiles],
@@ -1279,6 +1380,7 @@ export function AppSideEffects() {
     groupConfigs,
     updateGroupConfigs,
     updateManagedSources,
+    commitVaultGroupMutation,
     updatePortForwardingRules: importPortForwardingRules,
     startTunnel,
     stopTunnel,
@@ -1289,6 +1391,7 @@ export function AppSideEffects() {
   });
 
   const _handleSshDeepLink = useEffectEvent((payload: { url?: string }) => {
+    startupLaunchIntentReceivedRef.current = true;
     const rawUrl = payload?.url || '';
     const target = parseSshDeepLink(rawUrl);
     if (!target) {
@@ -1346,6 +1449,7 @@ export function AppSideEffects() {
   }, [isPeerSessionWindow]);
 
   const _handleTelnetDeepLink = useEffectEvent((payload: { url?: string }) => {
+    startupLaunchIntentReceivedRef.current = true;
     const rawUrl = payload?.url || '';
     const target = parseTelnetDeepLink(rawUrl);
     if (!target) {
@@ -1392,6 +1496,7 @@ export function AppSideEffects() {
   }, [isPeerSessionWindow]);
 
   const _handleJmsDeepLink = useEffectEvent((payload: { url?: string }) => {
+    startupLaunchIntentReceivedRef.current = true;
     const rawUrl = payload?.url || '';
     const target = parseJmsDeepLink(rawUrl);
     if (!target) {
@@ -1431,6 +1536,7 @@ export function AppSideEffects() {
   }, [sessions]);
 
   const _handleOpenTerminalPath = useEffectEvent((payload: { path?: string }) => {
+    startupLaunchIntentReceivedRef.current = true;
     const localStartDir = typeof payload?.path === 'string' ? payload.path : '';
     if (!localStartDir.trim()) return;
     handleCreateLocalTerminal(undefined, { localStartDir });

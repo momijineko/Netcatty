@@ -11,7 +11,7 @@ import { SessionLogFormat, keyEventToString } from "../../../domain/models";
 import type { HttpNetworkProxyMode, HttpNetworkProxySettings } from "../../../domain/httpNetworkProxy";
 import { Button } from "../../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
-import { Toggle, Select, SettingRow, SectionHeader, SettingCard, SettingsAnchor, SettingsTabContent } from "../settings-ui";
+import { Toggle, Select, SettingRow, SectionHeader, SettingCard, SettingHint, SettingsAnchor, SettingsTabContent } from "../settings-ui";
 import { cn } from "../../../lib/utils";
 
 interface CrashLogFile {
@@ -98,6 +98,8 @@ interface SettingsSystemTabProps {
   setRestorePreviousSession: (enabled: boolean) => void;
   restoreTerminalCwd: boolean;
   setRestoreTerminalCwd: (enabled: boolean) => void;
+  startupLanding: "vault" | "local-terminal";
+  setStartupLanding: (landing: "vault" | "local-terminal") => void;
   toggleWindowHotkey: string;
   setToggleWindowHotkey: (hotkey: string) => void;
   closeToTray: boolean;
@@ -139,6 +141,8 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
   setRestorePreviousSession,
   restoreTerminalCwd,
   setRestoreTerminalCwd,
+  startupLanding,
+  setStartupLanding,
   toggleWindowHotkey,
   setToggleWindowHotkey,
   closeToTray,
@@ -565,7 +569,7 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
                 />
               </SettingRow>
             </SettingCard>
-            <p className="text-xs text-muted-foreground">
+            <SettingHint>
               {updateState.lastCheckedAt && (
                 <span>
                   {t('settings.update.lastCheckedPrefix')}
@@ -574,7 +578,7 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
                 </span>
               )}
               {t('settings.update.hint')}
-            </p>
+            </SettingHint>
 
           <SectionHeader title={t("settings.system.networkProxy.title")} />
             <SettingCard className="space-y-4 py-4">
@@ -635,9 +639,9 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
                 </>
               )}
             </SettingCard>
-            <p className="text-xs text-muted-foreground">
+            <SettingHint>
               {t("settings.system.networkProxy.hint")}
-            </p>
+            </SettingHint>
 
           <SectionHeader title={t("settings.system.credentials.title")} />
             <SettingsAnchor anchorId="system-credentials">
@@ -828,9 +832,9 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
               )}
             </SettingCard>
 
-            <p className="text-xs text-muted-foreground">
+            <SettingHint>
               {t("settings.system.crashLogs.hint")}
-            </p>
+            </SettingHint>
             </SettingsAnchor>
 
           <SectionHeader title={t("settings.system.tempDirectory")} />
@@ -911,13 +915,31 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
               )}
             </SettingCard>
 
-            <p className="text-xs text-muted-foreground">
+            <SettingHint>
               {t("settings.system.tempDirectoryHint")}
-            </p>
+            </SettingHint>
             </SettingsAnchor>
 
           <SectionHeader title={t("settings.sessionRestore.title")} />
             <SettingCard className="space-y-4 py-4">
+              <SettingRow
+                anchorId="system-startup-landing"
+                label={t("settings.sessionRestore.startupLanding")}
+                description={t("settings.sessionRestore.startupLandingDesc")}
+              >
+                <Select
+                  value={startupLanding}
+                  onChange={(value) => {
+                    if (value === "vault" || value === "local-terminal") {
+                      setStartupLanding(value);
+                    }
+                  }}
+                  options={[
+                    { value: "vault", label: t("settings.sessionRestore.startupLanding.vault") },
+                    { value: "local-terminal", label: t("settings.sessionRestore.startupLanding.localTerminal") },
+                  ]}
+                />
+              </SettingRow>
               <SettingRow
                 anchorId="system-session-restore"
                 label={t("settings.sessionRestore.restorePreviousSession")}
@@ -1046,9 +1068,9 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
               </div>
             </SettingCard>
 
-            <p className="text-xs text-muted-foreground">
+            <SettingHint>
               {t("settings.sessionLogs.hint")}
-            </p>
+            </SettingHint>
 
           <SectionHeader title={t('settings.sshDeepLink.title')} />
             <SettingCard>
@@ -1161,9 +1183,9 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
               </div>
             </SettingCard>
 
-            <p className="text-xs text-muted-foreground">
+            <SettingHint>
               {t("settings.sshDebugLogs.hint")}
-            </p>
+            </SettingHint>
 
           <SectionHeader title={t("settings.globalHotkey.title")} />
             <SettingCard className="space-y-4 py-4">
@@ -1236,9 +1258,9 @@ const SettingsSystemTab: React.FC<SettingsSystemTabProps> = ({
               </SettingRow>
             </SettingCard>
 
-            <p className="text-xs text-muted-foreground">
+            <SettingHint>
               {t("settings.globalHotkey.hint")}
-            </p>
+            </SettingHint>
     </SettingsTabContent>
   );
 };
